@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data: file: https://web-static.kurobbs.com; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    />
+    <title>鸣潮 · 终焉矩阵配队台</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark"></span>
+        <span class="brand-text">终焉矩阵 · 配队台</span>
+      </div>
+
+      <div class="topbar-group">
+        <label class="field">
+          <span class="field-label">本期</span>
+          <select id="period-select" class="select"></select>
+        </label>
+        <input id="period-name" class="input input-sm" type="text" placeholder="本期名称" />
+        <button id="period-add" class="btn btn-ghost" title="新建一期，规则沿用本期">+ 新建本期</button>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="account">
+        <span id="save-state" class="pill pill-muted">—</span>
+        <span id="roster-count" class="pill pill-muted">角色池 —</span>
+        <button id="roster-refresh" class="btn btn-ghost">刷新角色池</button>
+        <button id="account-btn" class="btn btn-ghost">未登录</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="pane">
+        <div class="pane-head">
+          <h2>角色池</h2>
+          <div class="filters">
+            <select id="filter-attribute" class="select select-sm"></select>
+            <select id="filter-weapon" class="select select-sm"></select>
+            <input id="filter-keyword" class="input input-sm" type="search" placeholder="搜索角色" />
+            <label class="check"><input id="filter-available" type="checkbox" /><span>只看有余力</span></label>
+          </div>
+        </div>
+        <p class="hint">
+          点角色卡 = 编入当前队；点<strong>头像或右上角体力数字</strong> = 改该角色本期体力（默认 1）。
+        </p>
+        <div id="roster" class="roster-grid"></div>
+      </section>
+
+      <section class="pane pane-teams">
+        <div class="pane-head">
+          <h2>配队</h2>
+          <div class="pane-head-actions">
+            <span id="usage-summary" class="pill pill-muted"></span>
+            <button id="inherit-btn" class="btn btn-ghost">继承上期配队</button>
+            <button id="team-add" class="btn btn-primary">+ 新增队伍</button>
+          </div>
+        </div>
+        <p class="hint">
+          每队 3 人，队伍数量不限。点队伍卡片设为「当前队」，再点左侧角色即可编入；点队伍里的槽位可精确选人或清空。每编入一名角色扣 1 点体力。
+        </p>
+        <div id="teams" class="teams"></div>
+      </section>
+    </main>
+
+    <div id="modal" class="modal hidden">
+      <div class="modal-box">
+        <div class="modal-head">
+          <h3 id="modal-title">选择角色</h3>
+          <input id="modal-search" class="input" type="search" placeholder="搜索…" />
+          <button id="modal-close" class="btn btn-ghost">关闭</button>
+        </div>
+        <div id="modal-body" class="modal-body"></div>
+      </div>
+    </div>
+
+    <div id="login-overlay" class="modal hidden">
+      <div class="modal-box modal-box-sm">
+        <div class="modal-head">
+          <h3>登录库街区账号</h3>
+        </div>
+        <div class="modal-body login-body">
+          <p class="hint">
+            验证码请先在<strong>库街区 App</strong> 登录页点「获取验证码」拿到——服务端发码带人机校验，工具无法代发。
+          </p>
+          <label class="field field-block">
+            <span class="field-label">手机号</span>
+            <input id="login-mobile" class="input" type="tel" inputmode="numeric" />
+          </label>
+          <label class="field field-block">
+            <span class="field-label">验证码</span>
+            <input id="login-code" class="input" type="text" inputmode="numeric" />
+          </label>
+          <p class="hint warn">
+            同一账号在库街区 App 端只能存在一个登录态：用本工具登录会顶掉 QQ 机器人等其他工具的 token。
+          </p>
+          <div class="login-actions">
+            <button id="login-cancel" class="btn btn-ghost">取消</button>
+            <button id="login-submit" class="btn btn-primary">登录</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+
+    <script src="healers.js"></script>
+    <script src="mock.js"></script>
+    <!-- 可选的本地预览数据（npm run mock 生成，已在 .gitignore 中）。没有它的机器会 404 一次，属正常。 -->
+    <script src="mock.local.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

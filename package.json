@@ -1,0 +1,54 @@
+{
+  "name": "wuwa-matrix",
+  "version": "0.1.0",
+  "private": true,
+  "description": "鸣潮「终焉矩阵」配队与体力管理工具：一期一配，体力不超支，跨期不用从头配",
+  "license": "AGPL-3.0-only",
+  "author": "lNeko-afk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lNeko-afk/Wuwa-Matrix.git"
+  },
+  "main": "src/main/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node scripts/test-healers.cjs",
+    "mock": "node scripts/make-mock.mjs",
+    "verify": "node scripts/verify.cjs",
+    "dist": "electron-builder"
+  },
+  "keywords": [
+    "wuthering-waves",
+    "鸣潮",
+    "终焉矩阵",
+    "electron",
+    "team-builder"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "electron": "33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "io.github.wuwa-matrix",
+    "productName": "wuwa-matrix",
+    "asar": false,
+    "files": [
+      "src/**/*",
+      "scripts/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
