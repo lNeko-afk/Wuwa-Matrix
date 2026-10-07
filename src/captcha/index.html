@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      这是一个**隔离**的小窗口：里面没有任何应用数据（拿不到 token，也没有手机号输入框），
+      只为了让人机校验的第三方脚本在这里运行。因此这里的 CSP 只为放行极验所需域名，
+      主界面的 CSP 不受影响。
+
+      两个必须注意的点：
+      1) 极验会**跟随页面协议**取子资源和调接口。我们的校验页跑在 http://127.0.0.1
+         （极验不认 file://），于是它走 http:// 而不是 https:// —— 所以两个协议都要放行，
+         只写 https 会被自己拦掉，表现为「网络错误 / 控件不渲染」。
+      2) 它的 /load 是 **JSONP（当 <script> 加载）**，不是 XHR，所以那些域名必须出现在
+         script-src 而不是只有 connect-src；且它有三个兜底域名
+         （geetest.com / geevisit.com / gsensebot.com）。任何一个没放行，挑战数据就加载不了，
+         此时极验会**静默放行**（fail-open）—— 看起来「校验通过」，实际没有校验。
+
+      代价：这段流量不可防中间人。但这个窗口没有任何应用数据、没有输入框，
+      它能触发的最坏情况只是一次发码尝试，所以影响有界。
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.geetest.com http://static.geetest.com http://gcaptcha4.geetest.com https://gcaptcha4.geetest.com http://gcaptcha4.geevisit.com https://gcaptcha4.geevisit.com http://gcaptcha4.gsensebot.com https://gcaptcha4.gsensebot.com; style-src 'self' 'unsafe-inline' https://static.geetest.com http://static.geetest.com; img-src 'self' data: blob: https://static.geetest.com http://static.geetest.com; font-src 'self' data: https://static.geetest.com http://static.geetest.com; connect-src 'self' https://gcaptcha4.geetest.com http://gcaptcha4.geetest.com https://gcaptcha4.geevisit.com http://gcaptcha4.geevisit.com https://gcaptcha4.gsensebot.com http://gcaptcha4.gsensebot.com https://static.geetest.com http://static.geetest.com; frame-src 'self' https://static.geetest.com http://static.geetest.com; worker-src 'self' blob:"
+    />
+    <title>人机校验</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 16px;
+        background: #0f1117;
+        color: #e7e9f0;
+        font: 13px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        min-height: 100vh;
+      }
+      .tip {
+        margin: 0;
+        color: #8b93a7;
+        font-size: 12px;
+      }
+      #cap {
+        display: flex;
+        justify-content: center;
+        min-height: 44px;
+      }
+      .status {
+        margin: 0;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: #151824;
+        border: 1px solid #262c3d;
+        color: #b9c0d0;
+        font-size: 12px;
+        flex: 1;
+      }
+      .status.is-error {
+        border-color: rgba(239, 95, 107, 0.5);
+        color: #ffd7db;
+      }
+      .status.is-ok {
+        border-color: rgba(127, 224, 192, 0.5);
+        color: #b6f2df;
+      }
+      .actions {
+        display: flex;
+        justify-content: flex-end;
+      }
+      button {
+        font: inherit;
+        color: inherit;
+        border: 1px solid #262c3d;
+        background: transparent;
+        border-radius: 8px;
+        padding: 6px 14px;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #1a1f2e;
+      }
+    </style>
+  </head>
+  <body>
+    <p class="tip">拖动滑块完成校验，通过后会自动发送验证码。</p>
+    <div id="cap"></div>
+    <p id="status" class="status">正在加载人机校验…</p>
+    <div class="actions">
+      <button id="cancel" type="button">取消</button>
+    </div>
+    <script src="https://static.geetest.com/v4/gt4.js"></script>
+    <script src="captcha.js"></script>
+  </body>
+</html>

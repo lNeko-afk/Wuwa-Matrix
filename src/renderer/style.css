@@ -20,6 +20,17 @@
   box-sizing: border-box;
 }
 
+/*
+ * 通用隐藏工具类。
+ * 注意：本文件原本只有组件级的 .modal.hidden / .toast.hidden 两条规则，
+ * 并不存在通用的 .hidden —— 给别的元素加 hidden 类是没有效果的。
+ * 另外：判断可见性时请看 getComputedStyle().display，不要用 classList 当代理，
+ * 否则会出现「类加上了、东西还显示着」的假通过。
+ */
+.hidden {
+  display: none !important;
+}
+
 html,
 body {
   height: 100%;
@@ -672,6 +683,27 @@ select {
 .stamina[data-edit-stamina]:hover {
   color: var(--accent);
   border-color: var(--accent-dim);
+}
+
+.known-phone {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.code-row {
+  display: flex;
+  gap: 8px;
+}
+
+.code-row .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.code-row .btn {
+  white-space: nowrap;
+  min-width: 104px;
 }
 
 .text-danger {

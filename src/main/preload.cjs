@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('wuwa', {
   saveConfig: (data) => ipcRenderer.invoke('config:save', data),
   credStatus: () => ipcRenderer.invoke('kuro:credStatus'),
   login: (payload) => ipcRenderer.invoke('kuro:login', payload),
+  sendSmsCode: (payload) => ipcRenderer.invoke('kuro:sendSmsCode', payload),
   logout: () => ipcRenderer.invoke('kuro:logout'),
   fetchRoster: () => ipcRenderer.invoke('kuro:roster'),
   fetchIcons: () => ipcRenderer.invoke('kuro:icons'),

@@ -3,18 +3,27 @@
  * Electron 主进程 —— 库街区凭据只在这一层存在。
  *
  * 安全边界:
- *  - 渲染层（页面）**永远拿不到 token/did**：config:load 会摘掉 credentials，
- *    登录/拉角色池都走 IPC，返回值里不含凭据。
+ *  - 渲染层（页面）**永远拿不到 token/did/完整手机号**：config:load 会摘掉 credentials，
+ *    登录/拉角色池都走 IPC，返回值里不含凭据。手机号只回传打码值。
  *  - 凭据在磁盘上是加密的（见 store.cjs 的 safeStorage）。
  *  - 调试钩子（WUWA_CAPTURE / WUWA_CAPTURE_JS）只在未打包时可用，
  *    且注入任意 JS 需要额外打开 WUWA_ALLOW_JS_HOOK=1 —— 打包后的发行版里是死代码。
+ *  - 人机校验（极验）跑在一个**隔离的空窗口**里，主界面保持 file:// 加载，不受影响。
  */
 const { app, BrowserWindow, ipcMain } = require('electron');
 const fs = require('node:fs');
+const http = require('node:http');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { Store } = require('./store.cjs');
 const { KuroClient } = require('./kurobbs.cjs');
+
+/**
+ * 极验 captcha_id：来自 Kuro-API-Collection 中库街区 getSmsCode 的请求示例，
+ * 2026-10-07 实测仍有效（/load 能返回挑战数据）。若官方更换，改这一处即可
+ * —— 校验小窗会通过 URL 参数拿到它，保证只有一处定义。
+ */
+const CAPTCHA_ID = '3f7e2d848ce0cb7e7d019d621e556ce2';
 
 let store = null;
 let mainWindow = null;
@@ -80,6 +89,103 @@ async function ensureIcons(roles) {
   return map;
 }
 
+/* ------------------------------------------------------------------ *
+ *  人机校验（极验）—— 隔离小窗 + 本地回环静态服务
+ *
+ *  为什么需要本地 http 服务：极验只认 http(s) 源，在 file:// 下
+ *  initGeetest4 会静默不回调（实测）。为了让主界面继续用 file://
+ *  （头像缓存、离线特性都依赖它），把校验页单独放在一个窗口里，
+ *  由一个只绑 127.0.0.1、端口随机、仅服务 src/captcha 静态文件的服务提供。
+ * ------------------------------------------------------------------ */
+
+let captchaServer = null;
+let captchaPort = 0;
+let captchaWindow = null;
+let captchaResolve = null;
+
+async function ensureCaptchaServer() {
+  if (captchaServer) return captchaPort;
+  const dir = path.join(__dirname, '..', 'captcha');
+  const MIME = {
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.png': 'image/png',
+    '.svg': 'image/svg+xml',
+  };
+  const server = http.createServer((req, res) => {
+    const urlPath = decodeURIComponent(String(req.url || '/').split('?')[0]);
+    const rel = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
+    const file = path.join(dir, rel);
+    // 只允许读 captcha 目录内的文件
+    if (!path.resolve(file).startsWith(path.resolve(dir))) {
+      res.writeHead(403).end('forbidden');
+      return;
+    }
+    fs.readFile(file, (err, buf) => {
+      if (err) {
+        res.writeHead(404).end('not found');
+        return;
+      }
+      res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'application/octet-stream' });
+      res.end(buf);
+    });
+  });
+
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve); // 端口 0 = 随机可用端口，且只绑回环
+  });
+  captchaServer = server;
+  captchaPort = server.address().port;
+  return captchaPort;
+}
+
+function closeCaptchaWindow(result) {
+  const resolve = captchaResolve;
+  captchaResolve = null;
+  if (captchaWindow && !captchaWindow.isDestroyed()) captchaWindow.close();
+  captchaWindow = null;
+  if (resolve) resolve(result);
+}
+
+/** 打开校验小窗，返回极验校验数据；用户取消/关窗则返回 null。 */
+async function openCaptchaWindow() {
+  if (captchaWindow && !captchaWindow.isDestroyed()) captchaWindow.focus();
+  const port = await ensureCaptchaServer();
+
+  return new Promise((resolve) => {
+    captchaResolve = resolve;
+    captchaWindow = new BrowserWindow({
+      width: 420,
+      height: 480,
+      parent: mainWindow || undefined,
+      modal: Boolean(mainWindow),
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      autoHideMenuBar: true,
+      title: '人机校验',
+      backgroundColor: '#0f1117',
+      webPreferences: {
+        preload: path.join(__dirname, 'captcha-preload.cjs'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+    captchaWindow.on('closed', () => {
+      captchaWindow = null;
+      if (captchaResolve) {
+        const r = captchaResolve;
+        captchaResolve = null;
+        r(null);
+      }
+    });
+    captchaWindow.loadURL(`http://127.0.0.1:${port}/?captchaId=${encodeURIComponent(CAPTCHA_ID)}`);
+  });
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1480,
@@ -89,6 +195,7 @@ function createWindow() {
     title: '鸣潮 · 终焉矩阵配队台',
     backgroundColor: '#0f1117',
     autoHideMenuBar: true,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -97,6 +204,21 @@ function createWindow() {
     },
   });
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+
+  // 显式在 ready-to-show 时 show + focus。若不这样做，窗口可能以「未激活」的状态出现，
+  // 这时页面里的 element.focus() 只会设上 DOM 焦点、光标不出现、打字无效 ——
+  // 表现为「第一次点输入框没反应，第二次才行」。
+  // 兜底：万一 ready-to-show 没触发，也必须把窗口显示出来，否则应用等于没启动。
+  let revealed = false;
+  const revealWindow = () => {
+    if (revealed) return;
+    revealed = true;
+    win.show();
+    win.focus();
+  };
+  win.once('ready-to-show', revealWindow);
+  setTimeout(revealWindow, 3000);
+
   mainWindow = win;
 
   // ---- 调试钩子（仅开发态）----
@@ -148,18 +270,30 @@ function simplifyRole(r) {
   };
 }
 
-/** 脱敏后的账号信息 —— 这是唯一会送到渲染层的账号相关内容。 */
+/** 手机号脱敏：只保留前 3 后 4。渲染层只拿得到这个。 */
+const maskPhone = (phone) =>
+  typeof phone === 'string' && phone.length === 11 ? `${phone.slice(0, 3)}****${phone.slice(-4)}` : '';
+
+/** 脱敏后的账号信息 —— 这是唯一会送到渲染层的账号相关内容（含打码手机号）。 */
 function publicCredStatus() {
   const c = store.credentials;
   return c && c.token
-    ? { loggedIn: true, roleName: c.roleName, userName: c.userName, roleId: c.roleId }
+    ? {
+        loggedIn: true,
+        roleName: c.roleName,
+        userName: c.userName,
+        roleId: c.roleId,
+        maskedPhone: maskPhone(c.phone),
+      }
     : { loggedIn: false };
 }
 
 function registerIpc() {
   // 配置里绝不含凭据；落盘时再把主进程持有的凭据接回去，避免被渲染层覆盖掉。
   ipcMain.handle('config:load', () => {
-    const { credentials, ...safe } = store.all();
+    const data = store.all();
+    const { credentials, ...safe } = data;
+    // 缓存里的角色池先挂上本地头像地址, 这样热启动的第一帧渲染就无需联网。
     if (Array.isArray(safe.roster)) safe.roster = safe.roster.map(attachCachedIcon);
     return safe;
   });
@@ -176,16 +310,27 @@ function registerIpc() {
     return true;
   });
 
-  // 短信登录。验证码需用户自行在库街区 App 点「获取验证码」拿到(服务端发码带极验)。
-  // 返回值刻意不含 token。
-  ipcMain.handle('kuro:login', async (_event, { mobile, code, label }) => {
-    if (!mobile || !code) throw new Error('手机号和验证码都不能为空');
-    const session = await KuroClient.loginBySms(String(mobile).trim(), String(code).trim());
+  // 短信登录。
+  //
+  // 验证码可以由「发送验证码」按钮走极验发（见下），也可以由用户在库街区 App 里获取。
+  // mobile 可以省略：界面在记住手机号后只显示打码号码、登录时只回传验证码，
+  // 完整手机号由主进程补上 —— 这样手机号（PII）默认不进入渲染层。
+  // 返回值也刻意不含 token 与完整手机号。
+  ipcMain.handle('kuro:login', async (_event, { mobile, code } = {}) => {
+    const typed = String(mobile ?? '').trim();
+    const remembered = store.credentials?.phone || '';
+    const useMobile = typed || remembered;
+    const useCode = String(code ?? '').trim();
+    if (!useMobile) throw new Error('请填写手机号');
+    if (!useCode) throw new Error('验证码不能为空');
+
+    const session = await KuroClient.loginBySms(useMobile, useCode);
     if (!session.token) throw new Error('登录接口没有返回 token');
     const bound = await KuroClient.getBoundRoles(session.token, session.did);
     const target = bound.find((r) => r.isDefault) ?? bound[0];
     if (!target) throw new Error('该账号没有绑定鸣潮角色');
     store.setCredentials({
+      phone: useMobile, // 加密落盘，供下次登录自动带出
       token: session.token,
       did: session.did,
       userId: session.userId,
@@ -193,10 +338,45 @@ function registerIpc() {
       serverId: target.serverId,
       roleId: target.roleId,
       roleName: target.roleName,
-      label: label || target.roleName,
+      label: target.roleName,
       boundRoles: bound.map((r) => ({ roleId: r.roleId, serverId: r.serverId, roleName: r.roleName })),
     });
     return publicCredStatus();
+  });
+
+  /**
+   * 发送短信验证码：先弹极验小窗，通过后拿校验数据去调 getSmsCode。
+   * mobile 可省略（沿用记住的号码）。完整手机号不出主进程。
+   */
+  ipcMain.handle('kuro:sendSmsCode', async (_event, { mobile } = {}) => {
+    const typed = String(mobile ?? '').trim();
+    const phone = typed || store.credentials?.phone || '';
+    if (!phone) throw new Error('请先填手机号（第一次登录时无法自动发送）');
+
+    const validate = await openCaptchaWindow();
+    if (!validate) throw new Error('已取消人机校验');
+
+    // 传对象即可 —— 编码由 kurobbs.cjs 里的 URLSearchParams 负责，这里再编一次会双重编码
+    const rsp = await KuroClient.sendSmsCode(phone, {
+      captcha_id: CAPTCHA_ID,
+      lot_number: validate.lot_number,
+      pass_token: validate.pass_token,
+      gen_time: validate.gen_time,
+      captcha_output: validate.captcha_output,
+    });
+    if (rsp?.data?.geeTest === true) throw new Error('人机校验没有通过，请重试');
+    if (rsp?.code !== 200) throw new Error(`发送失败：code=${rsp?.code} ${rsp?.msg || ''}`.trim());
+    return { ok: true, maskedPhone: maskPhone(phone) };
+  });
+
+  // 校验小窗回报
+  ipcMain.handle('captcha:solved', (_event, data) => {
+    closeCaptchaWindow(data || null);
+    return true;
+  });
+  ipcMain.handle('captcha:cancel', () => {
+    closeCaptchaWindow(null);
+    return true;
   });
 
   ipcMain.handle('kuro:roster', async () => {
@@ -226,4 +406,11 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('will-quit', () => {
+  if (captchaServer) {
+    captchaServer.close();
+    captchaServer = null;
+  }
 });

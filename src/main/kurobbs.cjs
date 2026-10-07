@@ -138,6 +138,36 @@ class KuroClient {
     return Array.isArray(rsp.data) ? rsp.data : [];
   }
 
+  /**
+   * 发送短信验证码。
+   *
+   * 必须带通过极验人机校验后得到的字段，否则服务端只会返回
+   * `{ code: 200, data: { geeTest: true } }` —— 即「请先过校验」，短信不会发出。
+   *
+   * @param {string} mobile 手机号。
+   * @param {object} captcha 极验校验数据：{ captcha_id, lot_number, pass_token, gen_time, captcha_output }。
+   *   注意这里刻意收**对象**而不是已编码的字符串：文档要求该字段是 URL 编码的 JSON，
+   *   但 post() 里的 URLSearchParams 已经会编码一次，调用方再 encodeURIComponent 就会双重编码，
+   *   服务端解析不出来并回 `code:500 系统异常`（已实测踩过）。
+   */
+  static async sendSmsCode(mobile, captcha) {
+    const headers = {
+      osVersion: 'Android',
+      devCode: randomDeviceCode(),
+      distinct_id: crypto.randomUUID(),
+      countryCode: 'CN',
+      model: 'V2243A',
+      source: 'android',
+      lang: 'zh-Hans',
+      version: '2.2.0',
+      versionCode: '2200',
+      channelId: '2',
+      'content-type': 'application/x-www-form-urlencoded',
+      'user-agent': 'okhttp/3.11.0',
+    };
+    return post(PATHS.smsCode, { mobile, geeTestData: JSON.stringify(captcha) }, headers);
+  }
+
   /** 换游戏访问令牌 b-at。 */
   async requestAccessToken() {
     const { token, did, serverId, roleId } = this.creds;

@@ -752,26 +752,152 @@ function countOverRoles() {
 
 /* ------------------------------------------------------------ 登录与同步 */
 
+/** 本次登录是否要换用新手机号（默认沿用记住的那个）。 */
+let loginUseNewPhone = false;
+
+const loginPhoneIsRemembered = () => Boolean(state.cred.maskedPhone) && !loginUseNewPhone;
+
 function showLogin() {
   if (state.cred.loggedIn) {
-    const again = confirm(`当前账号：${state.cred.roleName || ''}\n\n确定要重新登录吗？（会顶掉本账号在其他工具上的 token）`);
+    const again = confirm(
+      `当前账号：${state.cred.roleName || ''}\n\n确定要重新登录吗？\n库街区 App、微信鸣潮小工具、岸宝机器人等 QQ 机器人都会掉线，需要各自重新登录。`,
+    );
     if (!again) return;
   }
+  loginUseNewPhone = false;
+  $('#login-code').value = '';
   $('#login-overlay').classList.remove('hidden');
-  $('#login-mobile').focus();
+  renderLoginPhone();
+  focusLoginField();
 }
 
+/**
+ * 手机号已记住时，只显示打码号码 + 「换一个」按钮，让用户只需要输验证码。
+ * 完整手机号留在主进程，界面始终拿不到 —— 登录时只回传验证码。
+ */
+function renderLoginPhone() {
+  const masked = state.cred.maskedPhone || '';
+  const useRemembered = loginPhoneIsRemembered();
+  $('#login-mobile-row').classList.toggle('hidden', useRemembered);
+  $('#login-mobile-known').classList.toggle('hidden', !useRemembered);
+  if (useRemembered && masked) $('#login-mobile-masked').textContent = masked;
+}
+
+/**
+ * 聚焦登录输入框（手机号已有则直接跳到验证码）。
+ *
+ * 为什么要重试 + 监听窗口 focus：
+ *  ① 窗口若以「未激活」状态出现，element.focus() 只设 DOM 焦点，光标不出现、打字无效，
+ *     要点第二下才生效 —— 窗口拿到焦点后需要再补一次 focus()。
+ *  ② 从 confirm() 对话框返回时，浏览器会**异步**把焦点还给之前的按钮，可能晚于本次调用，
+ *     于是刚聚焦的输入框又被抢走。
+ */
+function focusLoginField() {
+  const overlay = $('#login-overlay');
+  if (!overlay || overlay.classList.contains('hidden')) return;
+  const target =
+    loginPhoneIsRemembered() || $('#login-mobile').value.trim() ? $('#login-code') : $('#login-mobile');
+  const apply = () => target.focus({ preventScroll: true });
+  apply();
+  clearTimeout(focusLoginField._t1);
+  clearTimeout(focusLoginField._t2);
+  focusLoginField._t1 = setTimeout(apply, 60);
+  focusLoginField._t2 = setTimeout(apply, 300);
+}
+
+// 「换一个手机号」：显示输入框并清空
+$('#login-change-mobile').addEventListener('click', () => {
+  loginUseNewPhone = true;
+  $('#login-mobile').value = '';
+  renderLoginPhone();
+  $('#login-mobile').focus();
+});
+
+/**
+ * 发送验证码：会弹出一个**隔离的人机校验小窗**（极验）。
+ * 极验跑在那个空窗口里，主界面与它无关；校验通过后由主进程带着校验数据调接口发码。
+ */
+let smsCooldownTimer = null;
+
+function setSendCodeButton(mode, seconds) {
+  const btn = $('#login-send-code');
+  if (!btn) return;
+  clearInterval(smsCooldownTimer);
+  smsCooldownTimer = null;
+  if (mode === 'idle') {
+    btn.disabled = false;
+    btn.textContent = '发送验证码';
+    return;
+  }
+  if (mode === 'busy') {
+    btn.disabled = true;
+    btn.textContent = '校验中…';
+    return;
+  }
+  let left = seconds;
+  const tick = () => {
+    if (left <= 0) {
+      setSendCodeButton('idle');
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = `${left}s 后重发`;
+    left -= 1;
+  };
+  tick();
+  smsCooldownTimer = setInterval(tick, 1000);
+}
+
+$('#login-send-code').addEventListener('click', async () => {
+  const remembered = loginPhoneIsRemembered();
+  const mobile = remembered ? '' : $('#login-mobile').value.trim();
+  if (!remembered && !mobile) {
+    toast('请先填写手机号', true);
+    return;
+  }
+  setSendCodeButton('busy');
+  try {
+    const result = await bridge.sendSmsCode({ mobile });
+    toast(`验证码已发送到 ${result?.maskedPhone || '你的手机'}，请查收短信`);
+    setSendCodeButton('cooldown', 60);
+    focusLoginField();
+  } catch (err) {
+    toast(`发送失败：${err.message}`, true);
+    setSendCodeButton('idle');
+  }
+});
+
+// 窗口重新获得焦点时补一次：用户「点第一下」往往只是激活窗口
+window.addEventListener('focus', () => {
+  if (!$('#login-overlay')?.classList.contains('hidden')) focusLoginField();
+});
+
+// 点登录框的空白处也落到输入框上，避免那一下白点
+document.addEventListener('click', (event) => {
+  const overlay = $('#login-overlay');
+  if (!overlay || overlay.classList.contains('hidden')) return;
+  if (!overlay.contains(event.target)) return;
+  if (event.target.closest('input, button')) return;
+  focusLoginField();
+});
+
 async function submitLogin() {
-  const mobile = $('#login-mobile').value.trim();
+  const remembered = loginPhoneIsRemembered();
+  const mobile = remembered ? '' : $('#login-mobile').value.trim();
   const code = $('#login-code').value.trim();
-  if (!mobile || !code) {
-    toast('手机号和验证码都要填', true);
+  if (!remembered && !mobile) {
+    toast('请填写手机号', true);
+    return;
+  }
+  if (!code) {
+    toast('请填写验证码', true);
     return;
   }
   const btn = $('#login-submit');
   btn.disabled = true;
   btn.textContent = '登录中…';
   try {
+    // mobile 留空时，主进程会用记住的号码补上 —— 完整手机号不经过渲染层
     state.cred = await bridge.login({ mobile, code });
     $('#login-overlay').classList.add('hidden');
     $('#login-code').value = '';

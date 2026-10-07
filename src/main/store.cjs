@@ -21,8 +21,8 @@ const EMPTY = {
   settings: { activePeriodId: null },
 };
 
-/** 需要加密落盘的字段。 */
-const SECRET_KEYS = ['token', 'did'];
+/** 需要加密落盘的字段。手机号也是 PII，一并加密。 */
+const SECRET_KEYS = ['token', 'did', 'phone'];
 
 function sealSecret(plain) {
   if (plain === undefined || plain === null || plain === '') return null;

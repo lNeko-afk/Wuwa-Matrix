@@ -88,16 +88,26 @@
           <p class="hint">
             验证码请先在<strong>库街区 App</strong> 登录页点「获取验证码」拿到——服务端发码带人机校验，工具无法代发。
           </p>
-          <label class="field field-block">
+          <label class="field field-block" id="login-mobile-row">
             <span class="field-label">手机号</span>
             <input id="login-mobile" class="input" type="tel" inputmode="numeric" />
           </label>
-          <label class="field field-block">
+          <div class="field field-block hidden" id="login-mobile-known">
+            <span class="field-label">手机号（已记住）</span>
+            <div class="known-phone">
+              <span id="login-mobile-masked" class="pill pill-muted">—</span>
+              <button id="login-change-mobile" class="btn btn-ghost" type="button">换一个</button>
+            </div>
+          </div>
+          <div class="field field-block">
             <span class="field-label">验证码</span>
-            <input id="login-code" class="input" type="text" inputmode="numeric" />
-          </label>
+            <div class="code-row">
+              <input id="login-code" class="input" type="text" inputmode="numeric" />
+              <button id="login-send-code" class="btn btn-ghost" type="button">发送验证码</button>
+            </div>
+          </div>
           <p class="hint warn">
-            同一账号在库街区 App 端只能存在一个登录态：用本工具登录会顶掉 QQ 机器人等其他工具的 token。
+            同一账号同一时间只能有一个登录态。登录后，库街区 App、微信鸣潮小工具、岸宝机器人等 QQ 机器人都会掉线，需要各自重新登录。
           </p>
           <div class="login-actions">
             <button id="login-cancel" class="btn btn-ghost">取消</button>
