@@ -62,6 +62,10 @@ npm start
 
 Windows 上也可以直接双击 **`启动配队台.bat`**（等价于 `npm start`）。
 
+> **不想用 git？** 在仓库页面点 **Code → Download ZIP**，解压后双击 `启动配队台.bat`。
+> 首次运行它会检查 Electron 运行时，缺失时会**问你要不要直接执行 `npm install`** —— 同意即可，装完自动启动。
+> （前提是本机已装 Node.js 20+；没装的话它会提示你去 https://nodejs.org/ 。）
+
 ### 方式二：打包成 exe
 
 ```bash
