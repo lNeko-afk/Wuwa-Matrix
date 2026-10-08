@@ -10,7 +10,7 @@
  *    且注入任意 JS 需要额外打开 WUWA_ALLOW_JS_HOOK=1 —— 打包后的发行版里是死代码。
  *  - 人机校验（极验）跑在一个**隔离的空窗口**里，主界面保持 file:// 加载，不受影响。
  */
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, clipboard, ipcMain, shell } = require('electron');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
@@ -393,6 +393,47 @@ function registerIpc() {
 
   // 补齐本地头像缓存; 返回 roleId -> file:// 地址。首次会联网, 之后秒回。
   ipcMain.handle('kuro:icons', async () => ensureIcons(store.all().roster || []));
+
+  /**
+   * 分享图：把渲染层里那块卡片按矩形截下来。
+   * mode = 'clipboard' 复制到剪贴板；否则存成 PNG 到 <数据目录>/exports/。
+   * 页面本身不滚动（body overflow: hidden），卡片又是 fixed 定位，
+   * 所以 getBoundingClientRect 的视口坐标与 capturePage 的页面坐标一致。
+   */
+  ipcMain.handle('share:capture', async (_event, { rect, mode, suggestedName } = {}) => {
+    if (!mainWindow) throw new Error('主窗口不存在');
+    const area = {
+      x: Math.round(Number(rect?.x) || 0),
+      y: Math.round(Number(rect?.y) || 0),
+      width: Math.round(Number(rect?.width) || 0),
+      height: Math.round(Number(rect?.height) || 0),
+    };
+    if (area.width < 20 || area.height < 20) throw new Error('截图区域无效');
+
+    const image = await mainWindow.webContents.capturePage(area);
+    if (mode === 'clipboard') {
+      clipboard.writeImage(image);
+      return { mode: 'clipboard' };
+    }
+
+    const dir = path.join(dataDir(), 'exports');
+    fs.mkdirSync(dir, { recursive: true });
+    const safe =
+      String(suggestedName || 'wuwa-matrix')
+        .replace(/[\\/:*?"<>|\s]+/g, '_')
+        .slice(0, 60) || 'wuwa-matrix';
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const file = path.join(dir, `${safe}-${stamp}.png`);
+    fs.writeFileSync(file, image.toPNG());
+    return { mode: 'file', path: file, size: fs.statSync(file).size };
+  });
+
+  ipcMain.handle('share:reveal', (_event, filePath) => {
+    if (typeof filePath === 'string' && filePath) shell.showItemInFolder(filePath);
+    return true;
+  });
 }
 
 app.whenReady().then(() => {

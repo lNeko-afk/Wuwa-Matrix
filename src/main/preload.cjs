@@ -10,4 +10,6 @@ contextBridge.exposeInMainWorld('wuwa', {
   logout: () => ipcRenderer.invoke('kuro:logout'),
   fetchRoster: () => ipcRenderer.invoke('kuro:roster'),
   fetchIcons: () => ipcRenderer.invoke('kuro:icons'),
+  captureShare: (payload) => ipcRenderer.invoke('share:capture', payload),
+  revealPath: (filePath) => ipcRenderer.invoke('share:reveal', filePath),
 });

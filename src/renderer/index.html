@@ -57,6 +57,7 @@
           <h2>配队</h2>
           <div class="pane-head-actions">
             <span id="usage-summary" class="pill pill-muted"></span>
+            <button id="share-btn" class="btn btn-ghost">分享图</button>
             <button id="inherit-btn" class="btn btn-ghost">继承上期配队</button>
             <button id="team-add" class="btn btn-primary">+ 新增队伍</button>
           </div>
@@ -113,6 +114,19 @@
             <button id="login-cancel" class="btn btn-ghost">取消</button>
             <button id="login-submit" class="btn btn-primary">登录</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="share-overlay" class="modal hidden">
+      <div class="share-stage">
+        <div id="share-card" class="share-card"></div>
+        <div class="share-actions">
+          <span id="share-status" class="hint"></span>
+          <button id="share-reveal" class="btn btn-ghost" disabled>打开文件夹</button>
+          <button id="share-save" class="btn">保存 PNG</button>
+          <button id="share-close" class="btn btn-ghost">关闭</button>
+          <button id="share-copy" class="btn btn-primary">截图并复制</button>
         </div>
       </div>
     </div>

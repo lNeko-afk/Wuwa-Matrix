@@ -353,8 +353,9 @@ function renderTeams() {
         .join('');
 
       return `
-      <div class="team ${team.id === state.activeTeamId ? 'is-active' : ''} ${overRoles.size ? 'is-broken' : ''}" data-team="${esc(team.id)}">
-        <div class="team-head" data-team="${esc(team.id)}" data-action="activate">
+      <div class="team ${team.id === state.activeTeamId ? 'is-active' : ''} ${overRoles.size ? 'is-broken' : ''}" data-team="${esc(team.id)}" draggable="true">
+        <div class="team-head" data-team="${esc(team.id)}" data-action="activate" title="点一下设为当前队；按住可拖动调整顺序">
+          <span class="drag-grip" aria-hidden="true">⠿</span>
           <span class="team-index">#${index + 1}</span>
           <span class="team-name">${esc(team.name)}</span>
           <span class="pill pill-muted">${team.slots.filter(Boolean).length}/${TEAM_SIZE}</span>
@@ -608,6 +609,86 @@ function bindEvents() {
     if (slot) {
       openPicker({ kind: 'slot', teamId: slot.dataset.team, slotIndex: Number(slot.dataset.slot) }, '编入角色');
     }
+  });
+
+  /* ---- 拖动调整队伍顺序 ----
+   * 关键：拖拽期间**绝不能重新渲染列表**。HTML5 拖放要求源元素始终留在 DOM 里，
+   * 一旦 re-render，浏览器会直接取消这次拖动（表现成「拖一下就断」）。
+   * 所以拖动过程中只画插入指示线，真正改顺序放在 drop。
+   */
+  let dragTeamId = null;
+
+  const clearDropMarks = () => {
+    $$('#teams .team').forEach((el) => el.classList.remove('is-drop-before', 'is-drop-after'));
+  };
+
+  /**
+   * 把 fromId 这支队伍挪到 toId 前面(after=false)或后面(after=true)。
+   * 注意要**先摘出被拖的那支再找目标下标** —— 否则下标会因位移而算错。
+   */
+  function reorderTeams(fromId, toId, after) {
+    if (!fromId || fromId === toId) return;
+    const plan = activePlan();
+    const fromIndex = plan.teams.findIndex((t) => t.id === fromId);
+    if (fromIndex < 0) return;
+    const [moved] = plan.teams.splice(fromIndex, 1);
+    let toIndex = plan.teams.findIndex((t) => t.id === toId);
+    if (toIndex < 0) {
+      plan.teams.splice(fromIndex, 0, moved); // 目标不见了就放回原位
+      return;
+    }
+    if (after) toIndex += 1;
+    plan.teams.splice(toIndex, 0, moved);
+    plan.teams.forEach((t, i) => (t.name = `第 ${i + 1} 队`)); // 序号跟着新顺序重排
+    touch();
+    renderTeams(); // 只重渲染配队区：换顺序不影响角色池的用量，不必整页重绘
+  }
+
+  $('#teams').addEventListener('dragstart', (event) => {
+    const teamEl = event.target.closest('.team');
+    if (!teamEl) return;
+    dragTeamId = teamEl.dataset.team;
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', dragTeamId);
+    teamEl.classList.add('is-dragging');
+  });
+
+  $('#teams').addEventListener('dragover', (event) => {
+    if (!dragTeamId) return;
+    const teamEl = event.target.closest('.team');
+    if (!teamEl) return;
+    event.preventDefault(); // 不 preventDefault 就不会触发 drop
+    event.dataTransfer.dropEffect = 'move';
+    if (teamEl.dataset.team === dragTeamId) {
+      clearDropMarks();
+      return;
+    }
+    const rect = teamEl.getBoundingClientRect();
+    const after = event.clientY > rect.top + rect.height / 2; // 落在下半 => 插到它后面
+    clearDropMarks();
+    teamEl.classList.add(after ? 'is-drop-after' : 'is-drop-before');
+  });
+
+  $('#teams').addEventListener('dragleave', (event) => {
+    if (event.target === $('#teams')) clearDropMarks();
+  });
+
+  $('#teams').addEventListener('drop', (event) => {
+    if (!dragTeamId) return;
+    const teamEl = event.target.closest('.team');
+    if (!teamEl) return;
+    event.preventDefault();
+    const dragged = dragTeamId;
+    const after = teamEl.classList.contains('is-drop-after');
+    dragTeamId = null;
+    clearDropMarks();
+    reorderTeams(dragged, teamEl.dataset.team, after);
+  });
+
+  $('#teams').addEventListener('dragend', () => {
+    dragTeamId = null;
+    clearDropMarks();
+    $$('#teams .team').forEach((el) => el.classList.remove('is-dragging'));
   });
 
   $('#modal-body').addEventListener('click', (event) => {
@@ -865,6 +946,171 @@ $('#login-send-code').addEventListener('click', async () => {
     toast(`发送失败：${err.message}`, true);
     setSendCodeButton('idle');
   }
+});
+
+/* ------------------------------------------------------------ 分享图 */
+
+let shareLastFile = '';
+
+/**
+ * 卡片宽度固定 1000；列数按队伍数自适应。
+ *
+ * 这个规则不只是「好看」——它决定卡片**总高度**，而卡片必须完整落在窗口内，
+ * 否则 capturePage 会裁掉超出部分，同时下面的按钮栏也会被挤出窗口点不到。
+ * 所以只有 1–2 队才用单列，其余尽早分列。
+ */
+function shareLayout(teamCount) {
+  const cols = teamCount <= 2 ? 1 : teamCount <= 6 ? 2 : teamCount <= 12 ? 3 : 4;
+  return { cols, compact: cols >= 3 };
+}
+
+function buildShareCardHtml() {
+  const period = activePeriod();
+  const teams = activePlan()?.teams || [];
+  const usage = usageMap();
+  const { cols } = shareLayout(teams.length);
+  const totalUsed = Object.values(usage).reduce((a, b) => a + b, 0);
+  const healerCount = state.roster.filter((r) => isHealer(r.roleId)).length;
+  const now = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  const dateText = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}`;
+
+  const slotHtml = (roleId) => {
+    if (!roleId) return '<div class="sc-slot is-empty">空位</div>';
+    const role = roleById(roleId);
+    const cap = staminaOf(roleId);
+    const used = usage[roleId] || 0;
+    const left = cap - used;
+    const chipClass = left < 0 ? 'is-over' : left === 0 ? 'is-full' : '';
+    return `
+      <div class="sc-slot">
+        <div class="sc-av" data-avatar="${esc(roleId)}">${esc((role?.name || '?').slice(0, 1))}</div>
+        <div class="sc-name">${esc(role?.name || nameOf(roleId))}</div>
+        <div class="sc-sub">${esc(role?.attribute || '')} · ${esc(role?.weapon || '')} · Lv.${role?.level ?? '?'}</div>
+        <div class="sc-chip ${chipClass}">余力 ${left}/${cap}</div>
+      </div>`;
+  };
+
+  const teamHtml = (team) => `
+    <div class="sc-team">
+      <div class="sc-team-name">${esc(team.name || '队伍')}</div>
+      <div class="sc-slots">${team.slots.map(slotHtml).join('')}</div>
+    </div>`;
+
+  return `
+    <div class="sc-head">
+      <div class="sc-title">终焉矩阵 · 配队</div>
+      <div class="sc-period">${esc(period?.name || '本期')}</div>
+      <div class="sc-date">${dateText}</div>
+    </div>
+    <div class="sc-stats">
+      <div class="sc-stat"><b>${teams.length}</b><span>队伍</span></div>
+      <div class="sc-stat"><b>${totalUsed}</b><span>已编入人次</span></div>
+      <div class="sc-stat"><b>${state.roster.length}</b><span>角色池</span></div>
+      <div class="sc-stat"><b>${healerCount}</b><span>治疗位</span></div>
+    </div>
+    <div class="sc-grid" style="grid-template-columns: repeat(${cols}, 1fr)">${teams.map(teamHtml).join('')}</div>
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid #262c3d;display:flex;font-size:11px;color:#5f677b">
+      <span>由 wuwa-matrix 生成</span>
+      <span style="margin-left:auto">github.com/lNeko-afk/Wuwa-Matrix</span>
+    </div>`;
+}
+
+function setShareStatus(text) {
+  $('#share-status').textContent = text || '';
+  $('#share-reveal').disabled = !shareLastFile;
+}
+
+/** 等头像加载完再允许导出 —— 否则截出来的图会缺头像。 */
+function hydrateShareAvatars(root, timeout = 5000) {
+  const jobs = $$('[data-avatar]', root).map(
+    (el) =>
+      new Promise((resolve) => {
+        const role = roleById(el.dataset.avatar);
+        const src = state.iconMap[role?.roleId] || role?.localIcon || role?.icon;
+        if (!src) {
+          resolve();
+          return;
+        }
+        let settled = false;
+        const finish = (ok) => {
+          if (settled) return;
+          settled = true;
+          if (ok) {
+            el.textContent = '';
+            el.style.backgroundImage = `url("${src}")`;
+          }
+          resolve();
+        };
+        const img = new Image();
+        img.onload = () => finish(true);
+        img.onerror = () => finish(false);
+        img.src = src;
+        avatarPending.push(img); // 持有引用，防止加载完成前被 GC 掉
+        setTimeout(() => finish(false), timeout);
+      }),
+  );
+  return Promise.all(jobs);
+}
+
+async function openShareCard() {
+  const teams = activePlan()?.teams || [];
+  if (!teams.length) {
+    toast('还没有队伍可以分享', true);
+    return;
+  }
+  const card = $('#share-card');
+  card.classList.toggle('is-compact', shareLayout(teams.length).compact);
+  card.innerHTML = buildShareCardHtml();
+  shareLastFile = '';
+  setShareStatus('正在准备头像…');
+  $('#share-save').disabled = true;
+  $('#share-copy').disabled = true;
+  $('#share-overlay').classList.remove('hidden');
+
+  await hydrateShareAvatars(card);
+  setShareStatus('头像就绪 —— 点右下角「截图并复制」，再到 QQ / 微信里 Ctrl+V 粘贴');
+  $('#share-save').disabled = false;
+  $('#share-copy').disabled = false;
+}
+
+async function captureShare(mode) {
+  const rect = $('#share-card').getBoundingClientRect();
+  $('#share-save').disabled = true;
+  $('#share-copy').disabled = true;
+  setShareStatus(mode === 'clipboard' ? '正在复制…' : '正在保存…');
+  try {
+    const result = await bridge.captureShare({
+      rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+      mode,
+      suggestedName: `配队-${activePeriod()?.name || '本期'}`,
+    });
+    if (result?.mode === 'clipboard') {
+      toast('已复制到剪贴板 —— 去 QQ / 微信里 Ctrl+V 粘贴即可');
+      setShareStatus('已复制到剪贴板 ✅');
+    } else {
+      shareLastFile = result.path;
+      toast(`已保存 ${(result.size / 1024).toFixed(0)} KB`);
+      setShareStatus(result.path);
+    }
+  } catch (err) {
+    toast(`导出失败：${err.message}`, true);
+    setShareStatus('');
+  }
+  $('#share-save').disabled = false;
+  $('#share-copy').disabled = false;
+  $('#share-reveal').disabled = !shareLastFile;
+}
+
+$('#share-btn').addEventListener('click', openShareCard);
+$('#share-save').addEventListener('click', () => captureShare('file'));
+$('#share-copy').addEventListener('click', () => captureShare('clipboard'));
+$('#share-reveal').addEventListener('click', () => {
+  if (shareLastFile) bridge.revealPath(shareLastFile);
+});
+$('#share-close').addEventListener('click', () => $('#share-overlay').classList.add('hidden'));
+$('#share-overlay').addEventListener('click', (event) => {
+  if (event.target.id === 'share-overlay') $('#share-overlay').classList.add('hidden');
 });
 
 // 窗口重新获得焦点时补一次：用户「点第一下」往往只是激活窗口

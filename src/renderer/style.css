@@ -408,6 +408,7 @@ select {
 }
 
 .team {
+  position: relative; /* 给插入指示线做定位参考 */
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--bg-card);
@@ -424,12 +425,53 @@ select {
   border-color: rgba(239, 95, 107, 0.5);
 }
 
+/* 拖动中：源卡片变淡，作为「正在搬这一张」的反馈 */
+.team.is-dragging {
+  opacity: 0.4;
+}
+
+/* 插入指示线。用绝对定位的伪元素而不是 border，避免撑动布局导致闪烁 */
+.team.is-drop-before::before,
+.team.is-drop-after::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.team.is-drop-before::before {
+  top: -6px;
+}
+
+.team.is-drop-after::after {
+  bottom: -6px;
+}
+
 .team-head {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 7px;
-  cursor: pointer;
+  cursor: grab;
+}
+
+.team-head:active {
+  cursor: grabbing;
+}
+
+.drag-grip {
+  color: var(--text-faint);
+  font-size: 13px;
+  line-height: 1;
+  letter-spacing: -2px;
+  user-select: none;
+}
+
+.team-head:hover .drag-grip {
+  color: var(--text-dim);
 }
 
 .team-name {
@@ -704,6 +746,198 @@ select {
 .code-row .btn {
   white-space: nowrap;
   min-width: 104px;
+}
+
+/* ------------------------------------------------- 分享图 */
+
+.share-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  max-height: 97vh;
+}
+
+.share-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 1000px;
+}
+
+.share-actions .hint {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 卡片本体：宽度固定，高度由队伍数量与列数决定（见 app.js 的 shareLayout） */
+.share-card {
+  width: 1000px;
+  padding: 22px;
+  border-radius: 18px;
+  background: linear-gradient(160deg, #171b28 0%, #0f1219 60%);
+  border: 1px solid #2b3244;
+  color: #e7e9f0;
+  font: 13px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  box-sizing: border-box;
+}
+
+.sc-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #262c3d;
+}
+
+.sc-title {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: linear-gradient(90deg, #6ee7b7, #7fc7e8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.sc-period {
+  font-size: 14px;
+  color: #b9c0d0;
+}
+
+.sc-date {
+  margin-left: auto;
+  font-size: 12px;
+  color: #5f677b;
+}
+
+.sc-stats {
+  display: flex;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.sc-stat {
+  flex: 1;
+  background: #1a1f2e;
+  border: 1px solid #262c3d;
+  border-radius: 10px;
+  padding: 6px 10px;
+  text-align: center;
+}
+
+.sc-stat b {
+  display: block;
+  font-size: 17px;
+  font-weight: 700;
+  color: #e7e9f0;
+}
+
+.sc-stat span {
+  font-size: 11px;
+  color: #8b93a7;
+}
+
+.sc-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.sc-team {
+  background: #1a1f2e;
+  border: 1px solid #262c3d;
+  border-radius: 12px;
+  padding: 8px;
+}
+
+.sc-team-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #b9c0d0;
+  margin-bottom: 6px;
+}
+
+.sc-slots {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+}
+
+.sc-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 3px;
+  border-radius: 8px;
+  background: #10141f;
+  border: 1px solid #232a3a;
+  min-width: 0;
+}
+
+.sc-slot.is-empty {
+  color: #3f4658;
+  justify-content: center;
+  font-size: 11px;
+}
+
+.sc-av {
+  width: 38px;
+  height: 38px;
+  border-radius: 7px;
+  background: #0d111a center/cover no-repeat;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.6);
+  flex: none;
+}
+
+.sc-name {
+  font-size: 12px;
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sc-sub {
+  font-size: 10px;
+  color: #8b93a7;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sc-chip {
+  font-size: 10px;
+  color: #7fe0c0;
+  border: 1px solid rgba(127, 224, 192, 0.35);
+  border-radius: 999px;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+.sc-chip.is-full {
+  color: #e6b455;
+  border-color: rgba(230, 180, 85, 0.4);
+}
+
+.sc-chip.is-over {
+  color: #ef5f6b;
+  border-color: rgba(239, 95, 107, 0.5);
+}
+
+/* 列数多时槽位变窄，藏掉次要信息，避免文字溢出 */
+.share-card.is-compact .sc-sub {
+  display: none;
 }
 
 .text-danger {
