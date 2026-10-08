@@ -55,12 +55,12 @@
 
 ```bash
 git clone https://github.com/lNeko-afk/Wuwa-Matrix.git
-cd wuwa-matrix
+cd Wuwa-Matrix
 npm install
 npm start
 ```
 
-Windows 上也可以双击 `start.bat`（或中文名的 `启动配队台.bat`）。
+Windows 上也可以直接双击 **`启动配队台.bat`**（等价于 `npm start`）。
 
 ### 方式二：打包成 exe
 
