@@ -49,17 +49,19 @@
 
 ## 运行
 
-### 方式一：下载 exe（推荐 —— 不用装任何东西）
+### 方式一：双击项目里的 `wuwa-matrix.exe`（最省事）
 
-到 [**Releases**](https://github.com/lNeko-afk/Wuwa-Matrix/releases) 下载，二选一：
+项目根目录里的 **`wuwa-matrix.exe`** 就是完整程序——免安装版，对应最近一次发版的构建。
 
-| 文件 | 说明 |
-| --- | --- |
-| `wuwa-matrix-0.2.0-setup-x64.exe` | **安装版**：装到自己的用户目录（不需要管理员权限），带开始菜单 / 桌面快捷方式 |
-| `wuwa-matrix-0.2.0-portable-x64.exe` | **免安装版**：单个 exe，双击就跑，适合丢 U 盘或临时用 |
+两种拿法都行：`git clone https://github.com/lNeko-afk/Wuwa-Matrix.git`，
+或者在仓库页面点 **Code → Download ZIP** 解压（ZIP 里已经带着这个 exe）。
 
-**不需要 Node.js、不需要 npm、不需要 `npm install`** —— Electron 运行时和应用代码全都打进了 exe，
-解压出来的就是完整程序。
+然后**直接双击 `wuwa-matrix.exe`**。**不需要 Node.js、不需要 npm、不需要 `npm install`**——
+Electron 运行时和应用代码全都打进了这一个 exe，可以随便挪到桌面或 U 盘。
+
+想要**安装版**（装到用户目录、带开始菜单 / 桌面快捷方式、可从「应用和功能」卸载）：
+去 [**Releases**](https://github.com/lNeko-afk/Wuwa-Matrix/releases) 下带版本号的
+`wuwa-matrix-x.y.z-setup-x64.exe`。
 
 > ⚠️ 本项目没有购买代码签名证书，首次运行 Windows SmartScreen 会拦一下：
 > 点 **「更多信息」→「仍要运行」** 即可。
@@ -76,10 +78,8 @@ npm start
 ```
 
 Windows 上也可以直接双击 **`启动配队台.bat`**（等价于 `npm start`）。
-
-> **不想用 git？** 在仓库页面点 **Code → Download ZIP**，解压后双击 `启动配队台.bat`。
-> 首次运行它会检查 Electron 运行时，缺失时会**问你要不要直接执行 `npm install`** —— 同意即可，装完自动启动。
-> （前提是本机已装 Node.js 20+；没装的话它会提示你去 https://nodejs.org/ 。）
+首次运行它会检查 Electron 运行时，缺失时会**问你要不要直接执行 `npm install`**——
+同意即可，装完自动启动（前提是本机已装 Node.js 20+）。
 
 ### 方式三：自己打包 exe
 
@@ -89,8 +89,13 @@ npm run dist
 
 产物在 `dist/`：
 
-- `wuwa-matrix-0.2.0-setup-x64.exe` —— NSIS 安装包
-- `wuwa-matrix-0.2.0-portable-x64.exe` —— 免安装单文件
+- `wuwa-matrix-<版本>-setup-x64.exe` —— NSIS 安装包（用于上传 Releases）
+- `wuwa-matrix-<版本>-portable-x64.exe` —— 免安装单文件（用于上传 Releases）
+- `win-unpacked/` —— 未压缩的目录版，中间产物
+
+打包结束后，免安装版会被**自动复制到项目根目录的 `wuwa-matrix.exe`**（固定文件名，
+所以仓库工作区里始终只有一份，也就是「方式一」里让人双击的那个）。
+想连安装版一起放到根目录，用 `WUWA_ROOT_SETUP=1 npm run dist`。
 
 打包不会去 GitHub 下载 Electron：配置里写了 `electronDist: node_modules/electron/dist`，
 直接复用 `npm install` 已经装好的那份。
@@ -233,6 +238,8 @@ WUWA_EXPECT_ROLE_ID=<特征码> WUWA_EXPECT_ROLE_NAME=<角色名> WUWA_EXPECT_RO
 ### 目录结构
 
 ```
+wuwa-matrix.exe                免安装版程序本体（由 npm run dist 生成到根目录，固定文件名）
+启动配队台.bat                 源码启动脚本（等价于 npm start）
 src/main/kurobbs.cjs           库街区 API 客户端（零依赖：短信登录 → b-at → 角色列表 → 发码）
 src/main/store.cjs             本地 JSON 存储（负责凭据 / 手机号的加密）
 src/main/main.cjs              Electron 主进程 + IPC + 头像缓存 + 人机校验小窗

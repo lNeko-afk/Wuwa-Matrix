@@ -146,6 +146,36 @@ function electronBuilderBin() {
   return path.join(path.dirname(pkgPath), rel || 'out/cli/cli.js');
 }
 
+/* ------------------------------------------------------------------ *
+ *  把「能直接双击的程序」放到项目根目录
+ *
+ *  目的：克隆仓库或点 Code → Download ZIP 的人，不用装 Node、不用 npm install，
+ *  直接在项目里双击 wuwa-matrix.exe 就能用。
+ *
+ *  为什么用**固定文件名**而不是带版本号的：git 里同一个路径每版只覆盖，
+ *  工作区永远只有一份 78 MB；带版本号的话每发一版工作区就多一份。
+ *  带版本号的那份仍然留在 dist/ 里，用于上传 GitHub Releases。
+ * ------------------------------------------------------------------ */
+
+/** 是否也把安装版（NSIS）复制到根目录。默认只放免安装版：一个 exe 就够双击即用，省 78 MB。 */
+const ALSO_ROOT_SETUP = process.env.WUWA_ROOT_SETUP === '1';
+
+function publishToRoot() {
+  const version = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+  const jobs = [
+    [`wuwa-matrix-${version}-portable-x64.exe`, 'wuwa-matrix.exe'],
+    ...(ALSO_ROOT_SETUP ? [[`wuwa-matrix-${version}-setup-x64.exe`, 'wuwa-matrix-setup.exe']] : []),
+  ];
+
+  for (const [from, to] of jobs) {
+    const src = path.join(ROOT, 'dist', from);
+    if (!fs.existsSync(src)) throw new Error(`找不到打包产物 ${src}`);
+    const dest = path.join(ROOT, to);
+    fs.copyFileSync(src, dest);
+    console.log(`已放到项目根目录: ${to}  (${(fs.statSync(dest).size / 1048576).toFixed(1)} MB, v${version})`);
+  }
+}
+
 await stageWinCodeSign();
 
 const child = spawn(process.execPath, [electronBuilderBin(), ...process.argv.slice(2)], {
@@ -153,4 +183,7 @@ const child = spawn(process.execPath, [electronBuilderBin(), ...process.argv.sli
   cwd: ROOT,
   env: process.env,
 });
-child.on('exit', (code) => process.exit(code ?? 1));
+child.on('exit', (code) => {
+  if (code === 0) publishToRoot();
+  process.exit(code ?? 1);
+});
