@@ -26,6 +26,7 @@ build/*.exe
 *.log
 npm-debug.log*
 .npm-cache/
+.eb-cache/
 tmp/
 tmp-*/
 

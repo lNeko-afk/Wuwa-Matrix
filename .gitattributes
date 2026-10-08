@@ -6,7 +6,7 @@
 # 若写成 `text eol=crlf`，仓库里存的是 LF → 下载 ZIP 的人拿到 LF-only 的 .bat，
 # 而 cmd.exe 解析 LF-only 批处理有已知问题（if 块、label、pause 都会出怪事，
 # 实测表现就是「请按任意键继续」按了没反应）。
-# 所以 .bat 原样存 CRLF：用 -text，并靠 _probe/fix-bat-eol.cjs 保证工作区是 CRLF。
+# 所以 .bat 原样存 CRLF：用 -text；改这个文件时注意本机存成 CRLF 再提交。
 *.bat -text
 *.cmd -text
 

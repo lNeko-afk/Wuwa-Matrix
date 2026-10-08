@@ -1,6 +1,7 @@
 {
   "name": "wuwa-matrix",
-  "version": "0.1.0",
+  "productName": "wuwa-matrix",
+  "version": "0.2.0",
   "private": true,
   "description": "鸣潮「终焉矩阵」配队与体力管理工具：一期一配，体力不超支，跨期不用从头配",
   "license": "AGPL-3.0-only",
@@ -15,10 +16,12 @@
     "test": "node scripts/test-healers.cjs",
     "mock": "node scripts/make-mock.mjs",
     "verify": "node scripts/verify.cjs",
-    "dist": "electron-builder"
+    "icon": "node scripts/make-icon.mjs",
+    "dist": "node scripts/make-icon.mjs && node scripts/dist.mjs"
   },
   "keywords": [
     "wuthering-waves",
+    "wuwa",
     "鸣潮",
     "终焉矩阵",
     "electron",
@@ -35,12 +38,22 @@
     "appId": "io.github.wuwa-matrix",
     "productName": "wuwa-matrix",
     "asar": false,
+    "compression": "maximum",
+    "npmRebuild": false,
+    "nodeGypRebuild": false,
+    "electronDist": "node_modules/electron/dist",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
     "files": [
       "src/**/*",
       "scripts/**/*",
-      "package.json"
+      "package.json",
+      "LICENSE"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis",
         "portable"
@@ -48,7 +61,15 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "鸣潮矩阵配队",
+      "artifactName": "${productName}-${version}-setup-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable-${arch}.${ext}"
     }
   }
 }

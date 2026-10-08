@@ -31,9 +31,18 @@ let mainWindow = null;
 /** 调试钩子只在未打包时可用（打包发行版里彻底失效）。 */
 const devHooksEnabled = () => !app.isPackaged;
 
-/** 数据目录: 默认放在工程内(便携 + 可检查), 可用 WUWA_DATA_DIR 覆盖。 */
+/**
+ * 数据目录（凭据、头像缓存、导出图都在这）。
+ *  - 开发态：工程内 .data/（便携 + 可检查）
+ *  - 打包态：系统的 userData（%APPDATA%\wuwa-matrix）—— 安装目录可能是
+ *    Program Files，写不进去（非管理员没有权限），所以不能再用 getAppPath()。
+ *  - WUWA_DATA_DIR 始终最优先，便携版/测试可以指到 U 盘或临时目录。
+ */
 function dataDir() {
-  return process.env.WUWA_DATA_DIR || path.join(app.getAppPath(), '.data');
+  if (process.env.WUWA_DATA_DIR) return process.env.WUWA_DATA_DIR;
+  return app.isPackaged
+    ? path.join(app.getPath('userData'), 'data')
+    : path.join(app.getAppPath(), '.data');
 }
 
 const iconDir = () => path.join(dataDir(), 'icons');

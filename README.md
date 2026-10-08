@@ -49,7 +49,22 @@
 
 ## 运行
 
-### 方式一：直接跑源码（推荐）
+### 方式一：下载 exe（推荐 —— 不用装任何东西）
+
+到 [**Releases**](https://github.com/lNeko-afk/Wuwa-Matrix/releases) 下载，二选一：
+
+| 文件 | 说明 |
+| --- | --- |
+| `wuwa-matrix-0.2.0-setup-x64.exe` | **安装版**：装到自己的用户目录（不需要管理员权限），带开始菜单 / 桌面快捷方式 |
+| `wuwa-matrix-0.2.0-portable-x64.exe` | **免安装版**：单个 exe，双击就跑，适合丢 U 盘或临时用 |
+
+**不需要 Node.js、不需要 npm、不需要 `npm install`** —— Electron 运行时和应用代码全都打进了 exe，
+解压出来的就是完整程序。
+
+> ⚠️ 本项目没有购买代码签名证书，首次运行 Windows SmartScreen 会拦一下：
+> 点 **「更多信息」→「仍要运行」** 即可。
+
+### 方式二：直接跑源码
 
 需要 **Node.js 20+**。
 
@@ -66,14 +81,37 @@ Windows 上也可以直接双击 **`启动配队台.bat`**（等价于 `npm star
 > 首次运行它会检查 Electron 运行时，缺失时会**问你要不要直接执行 `npm install`** —— 同意即可，装完自动启动。
 > （前提是本机已装 Node.js 20+；没装的话它会提示你去 https://nodejs.org/ 。）
 
-### 方式二：打包成 exe
+### 方式三：自己打包 exe
 
 ```bash
 npm run dist
 ```
 
-产物在 `dist/`。本项目刻意设置 **`asar: false`**：exe 只作为入口，源码就是旁边可读的文件，
-不打成不可查看的黑盒。
+产物在 `dist/`：
+
+- `wuwa-matrix-0.2.0-setup-x64.exe` —— NSIS 安装包
+- `wuwa-matrix-0.2.0-portable-x64.exe` —— 免安装单文件
+
+打包不会去 GitHub 下载 Electron：配置里写了 `electronDist: node_modules/electron/dist`，
+直接复用 `npm install` 已经装好的那份。
+
+`npm run dist` 实际调的是 **`scripts/dist.mjs`**，它替你先做了三件在 Windows 上很容易卡住的事：
+
+| 它做的事 | 为什么 |
+| --- | --- |
+| 缓存固定到工程内 `.eb-cache/` | 默认缓存在 `%LOCALAPPDATA%`（C 盘），被系统清理后就得重下 |
+| 二进制默认走 npmmirror | electron-builder 还要下 `nsis` / `7zip`，默认走 github.com，国内常 `ECONNRESET` |
+| 预解压 `winCodeSign` 并排除 `darwin`/`linux` | 包里有 macOS 用的符号链接，而 Windows 建符号链接需要管理员权限或开发者模式，7za 会直接报 `Cannot create symbolic link ... 客户端没有所需的特权` |
+
+想换镜像或换缓存位置，用环境变量 `ELECTRON_BUILDER_BINARIES_MIRROR` /
+`ELECTRON_BUILDER_CACHE` 覆盖即可。
+
+应用图标由 `npm run icon` 生成（`scripts/make-icon.mjs`，零依赖手写 PNG/ICO 编码），
+`npm run dist` 会先跑它。本项目刻意设置 **`asar: false`**：exe 只作为入口，
+源码就是旁边可读的文件，不打成不可查看的黑盒。
+
+打包体积：安装包 / 免安装版各约 **78 MB**（解压后约 268 MB，其中绝大部分是 Electron 运行时；
+应用代码本身只有 0.1 MB，且**没有任何运行时 npm 依赖**）。
 
 ---
 
@@ -122,8 +160,14 @@ npm run dist
 | **人机校验脚本被隔离** | 「发送验证码」用的极验控件跑在一个**独立的空窗口**里 —— 那里面没有任何应用数据、也没有输入框。主界面仍是 `file://` 加载，CSP 不放行任何第三方域名。即使那个第三方脚本被劫持，也拿不到 token，最坏只能触发一次发码尝试 |
 | **调试钩子不可用** | 截图/注入类调试开关只在未打包的开发态生效，且注入任意 JS 需要额外显式打开第二个开关 |
 
-数据默认存在**项目目录下的 `.data/`**（便携，方便备份和检查）：
-可以用环境变量 `WUWA_DATA_DIR` 改到别处。
+数据目录：
+
+| 运行方式 | 位置 |
+| --- | --- |
+| 源码运行 | 项目目录下的 `.data/`（便携，方便备份和检查） |
+| 安装版 / 免安装版 | `%APPDATA%\wuwa-matrix\data`（安装目录不一定有写权限，所以数据不放那儿） |
+
+两种情况都可以用环境变量 `WUWA_DATA_DIR` 指到别处（例如 U 盘）。
 
 > ⚠️ 备份或分享 `.data/` 前请注意：里面除了加密的凭据，还有你的**角色池和配队方案**。
 > 凭据本身因加密而无法在别人机器上解密，但角色池属于你的账号信息。
@@ -141,7 +185,7 @@ npm run dist
 - **主角（漂泊者）不参与判定，体力固定 1 点**：主角可以在多个属性间自由切换，
   按属性去猜会导致判定随切属性跳动。
 - 只在 **Windows** 上实测过。macOS / Linux 理论上能跑（Electron 跨平台），但未验证。
-- 目前是 **0.1.0**，功能以「配队 + 体力 + 跨期继承」为主；推荐配队尚未实现。
+- 目前是 **0.2.0**，功能以「配队 + 体力 + 跨期继承」为主；推荐配队尚未实现。
 
 ---
 
@@ -175,7 +219,9 @@ npm install
 npm start                 # 启动
 npm run verify            # 端到端校验：凭据可用 / 接口通 / 角色池字段完整
 npm run mock              # 用自己的账号数据生成离线预览数据（不提交）
-npm run dist              # 打包
+npm test                  # 治疗位判定的自测（无需账号与网络）
+npm run icon              # 重新生成应用图标（build/icon.png + icon.ico）
+npm run dist              # 打包 exe（会先跑 icon）
 ```
 
 想核对「这份凭据确实是我本人的账号」，用环境变量传入期望值（这样账号标识不会进仓库）：
@@ -199,7 +245,10 @@ src/renderer/mock.js           合成演示数据（离线预览 / 截图用，�
 scripts/make-mock.mjs          用本机真实数据生成预览数据
 scripts/classify-healers.mjs   重新生成治疗位名单（无需登录）
 scripts/test-healers.cjs       治疗位判定的自测（无需账号与网络）
+scripts/make-icon.mjs          生成应用图标（零依赖手写 PNG/ICO）
+scripts/dist.mjs               打包入口（固定缓存/镜像，预解压 winCodeSign）
 scripts/verify.cjs             端到端校验
+build/icon.png|ico             应用图标（由 make-icon.mjs 生成，进仓库）
 ```
 
 ### 离线预览界面
