@@ -17,7 +17,7 @@
     "mock": "node scripts/make-mock.mjs",
     "verify": "node scripts/verify.cjs",
     "icon": "node scripts/make-icon.mjs",
-    "dist": "node scripts/make-icon.mjs && node scripts/dist.mjs"
+    "dist": "node scripts/make-icon.mjs && node scripts/dist.mjs && node scripts/make-checksums.mjs"
   },
   "keywords": [
     "wuthering-waves",

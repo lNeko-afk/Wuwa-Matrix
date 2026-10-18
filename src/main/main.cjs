@@ -25,6 +25,113 @@ const { KuroClient } = require('./kurobbs.cjs');
  */
 const CAPTCHA_ID = '3f7e2d848ce0cb7e7d019d621e556ce2';
 
+/** 官方仓库。公告与版本记录都用它的 GitHub Releases，不做第二套数据。 */
+const REPO = 'lNeko-afk/Wuwa-Matrix';
+
+/**
+ * 版本指纹：版本号 + git commit 短哈希。
+ *
+ * 它**不是**防篡改手段（改代码的人当然也能改这里），而是**举证材料**：
+ * 被人改装后冒充发布时，你能说出自己那一份的指纹是什么。
+ * 打包后没有 .git，commit 就留空，只显示版本号。
+ */
+function readBuildInfo() {
+  const info = { version: app.getVersion(), commit: '', repo: REPO };
+  try {
+    const gitDir = path.join(app.getAppPath(), '.git');
+    const head = fs.readFileSync(path.join(gitDir, 'HEAD'), 'utf8').trim();
+    let sha = '';
+    if (head.startsWith('ref: ')) {
+      const ref = head.slice(5).trim();
+      const refFile = path.join(gitDir, ref);
+      if (fs.existsSync(refFile)) {
+        sha = fs.readFileSync(refFile, 'utf8').trim();
+      } else {
+        const packed = path.join(gitDir, 'packed-refs');
+        if (fs.existsSync(packed)) {
+          const hit = fs
+            .readFileSync(packed, 'utf8')
+            .split('\n')
+            .find((line) => line.endsWith(` ${ref}`) && !line.startsWith('#'));
+          if (hit) sha = hit.split(' ')[0];
+        }
+      }
+    } else {
+      sha = head;
+    }
+    info.commit = sha.slice(0, 7);
+  } catch {
+    /* 打包后没有 .git —— 只显示版本号 */
+  }
+  return info;
+}
+
+/** 版本比较：>0 表示 a 比 b 新。够用即可，不引 semver 依赖。 */
+function compareVersion(a, b) {
+  const norm = (v) =>
+    String(v || '')
+      .replace(/^v/i, '')
+      .split('.')
+      .map((n) => Number(n) || 0);
+  const left = norm(a);
+  const right = norm(b);
+  for (let i = 0; i < Math.max(left.length, right.length); i += 1) {
+    const diff = (left[i] || 0) - (right[i] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+const noticeCacheFile = () => path.join(dataDir(), 'releases-cache.json');
+
+function readNoticeCache() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(noticeCacheFile(), 'utf8'));
+    return { releases: Array.isArray(parsed.releases) ? parsed.releases : [], fetchedAt: parsed.fetchedAt || 0 };
+  } catch {
+    return { releases: [], fetchedAt: 0 };
+  }
+}
+
+function writeNoticeCache(payload) {
+  try {
+    fs.mkdirSync(dataDir(), { recursive: true });
+    fs.writeFileSync(noticeCacheFile(), JSON.stringify(payload), 'utf8');
+  } catch {
+    /* 缓存写不进去不影响主流程 */
+  }
+}
+
+/**
+ * 拉取 GitHub Releases 当公告用。
+ *
+ * 只能走 api.github.com —— 本项目环境里 raw.githubusercontent.com 是不通的（实测 ECONNRESET）。
+ * 拉取失败就回落到本地缓存：app 本身是离线优先的，公告不该阻断使用。
+ */
+async function loadReleases() {
+  const cached = readNoticeCache();
+  try {
+    const rsp = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=10`, {
+      headers: { accept: 'application/vnd.github+json', 'user-agent': 'wuwa-matrix' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!rsp.ok) throw new Error(`GitHub API ${rsp.status}`);
+    const list = await rsp.json();
+    const releases = (Array.isArray(list) ? list : []).map((r) => ({
+      tag: r.tag_name || '',
+      name: r.name || r.tag_name || '',
+      date: String(r.published_at || '').slice(0, 10),
+      notes: String(r.body || '').slice(0, 6000),
+      url: r.html_url || `https://github.com/${REPO}/releases`,
+    }));
+    const payload = { fetchedAt: Date.now(), releases };
+    writeNoticeCache(payload);
+    return payload;
+  } catch (err) {
+    return { ...cached, error: err.message };
+  }
+}
+
 let store = null;
 let mainWindow = null;
 
@@ -402,6 +509,33 @@ function registerIpc() {
 
   // 补齐本地头像缓存; 返回 roleId -> file:// 地址。首次会联网, 之后秒回。
   ipcMain.handle('kuro:icons', async () => ensureIcons(store.all().roster || []));
+
+  /**
+   * 公告 = GitHub Releases。
+   * 版本说明同时就是版本记录，不维护第二套数据 —— 发版时写 release notes 就行了。
+   * 拉不到就回落到本地缓存，并把 error 如实带回去，让界面说「离线」而不是假装没有公告。
+   */
+  ipcMain.handle('notice:load', async () => {
+    const buildInfo = readBuildInfo();
+    const { releases, fetchedAt, error } = await loadReleases();
+    const latest = releases[0] || null;
+    return {
+      buildInfo,
+      releases,
+      fetchedAt: fetchedAt || 0,
+      latest,
+      hasUpdate: latest ? compareVersion(latest.tag, buildInfo.version) > 0 : false,
+      error: error || '',
+    };
+  });
+
+  // 只允许打开 GitHub 链接，避免渲染层借这个口子打开任意 URL
+  ipcMain.handle('notice:openExternal', (_event, url) => {
+    const raw = String(url || '');
+    const target = /^https:\/\/github\.com\//.test(raw) ? raw : `https://github.com/${REPO}/releases`;
+    shell.openExternal(target);
+    return true;
+  });
 
   /**
    * 分享图：把渲染层里那块卡片按矩形截下来。

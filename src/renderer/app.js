@@ -1113,6 +1113,107 @@ $('#share-overlay').addEventListener('click', (event) => {
   if (event.target.id === 'share-overlay') $('#share-overlay').classList.add('hidden');
 });
 
+/* ------------------------------------------------------------ 公告与版本 */
+
+let noticeData = null;
+
+function refreshNoticeBadge() {
+  const btn = $('#notice-btn');
+  if (!btn) return;
+  const d = noticeData || {};
+  const version = d.buildInfo?.version;
+  btn.textContent = version ? `v${version}` : 'v—';
+  btn.classList.toggle('has-update', Boolean(d.hasUpdate));
+  btn.title = d.hasUpdate && d.latest ? `有新版本 ${d.latest.tag}（点开看公告）` : '公告与版本记录';
+}
+
+function renderNotice() {
+  const d = noticeData || {};
+  const bi = d.buildInfo || {};
+  const parts = [];
+
+  parts.push(`
+    <div class="notice-meta">
+      <span><span class="hint-inline">当前版本</span> <b>v${esc(bi.version || '—')}</b>${
+        bi.commit ? ` <span class="hint-inline">· ${esc(bi.commit)}</span>` : ''
+      }</span>
+      <span><span class="hint-inline">仓库</span>
+        <button class="link" data-open="${esc(bi.repo || '')}">github.com/${esc(bi.repo || '')}</button>
+      </span>
+    </div>`);
+
+  if (d.hasUpdate && d.latest) {
+    parts.push(`
+      <div class="notice-update">
+        <b>有新版本 ${esc(d.latest.tag)}</b>
+        <span class="hint-inline">你现在是 v${esc(bi.version || '—')}</span>
+        <div class="spacer"></div>
+        <button class="btn btn-primary" data-open="${esc(d.latest.url || '')}">查看 / 下载</button>
+      </div>`);
+  }
+
+  if (Array.isArray(d.releases) && d.releases.length) {
+    parts.push(
+      d.releases
+        .map(
+          (r) => `
+        <div class="notice-release">
+          <div class="notice-release-head">
+            <span class="notice-tag">${esc(r.tag || '')}</span>
+            <span>${esc(r.name || '')}</span>
+            <span class="notice-date">${esc(r.date || '')}</span>
+          </div>
+          <pre class="notice-notes">${esc(r.notes || '（这条发布没有写说明）')}</pre>
+        </div>`,
+        )
+        .join(''),
+    );
+  } else {
+    parts.push(`<p class="hint">还没有任何发布记录。</p>
+      <p class="hint">发版时在 GitHub 上写 Release 说明，这里就会显示 —— <b>公告和版本记录是同一份东西</b>，不用另维护。</p>`);
+  }
+
+  if (d.error) {
+    parts.push(`<p class="hint warn">获取公告失败（${esc(d.error)}）${d.releases?.length ? '，下面是上次缓存的内容。' : '。'}</p>`);
+  }
+
+  $('#notice-body').innerHTML = parts.join('');
+}
+
+async function openNotice() {
+  $('#notice-overlay').classList.remove('hidden');
+  $('#notice-body').innerHTML = '<p class="hint">正在获取公告…</p>';
+  try {
+    noticeData = await bridge.loadNotice();
+  } catch (err) {
+    noticeData = { error: err.message, releases: [], buildInfo: { version: '—' } };
+  }
+  renderNotice();
+  refreshNoticeBadge();
+}
+
+$('#notice-btn').addEventListener('click', openNotice);
+$('#notice-close').addEventListener('click', () => $('#notice-overlay').classList.add('hidden'));
+$('#notice-overlay').addEventListener('click', (event) => {
+  if (event.target.id === 'notice-overlay') $('#notice-overlay').classList.add('hidden');
+});
+$('#notice-body').addEventListener('click', (event) => {
+  const target = event.target.closest('[data-open]');
+  if (target) bridge.openExternal(target.dataset.open);
+});
+
+// 启动后静默拉一次：只为显示版本号、并在有新版本时点亮按钮。
+// 失败不打扰（app 是离线优先的），此时按钮显示 v— 或上次缓存的版本。
+if (bridge) {
+  bridge
+    .loadNotice()
+    .then((data) => {
+      noticeData = data;
+      refreshNoticeBadge();
+    })
+    .catch(() => refreshNoticeBadge());
+}
+
 // 窗口重新获得焦点时补一次：用户「点第一下」往往只是激活窗口
 window.addEventListener('focus', () => {
   if (!$('#login-overlay')?.classList.contains('hidden')) focusLoginField();

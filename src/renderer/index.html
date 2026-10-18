@@ -28,6 +28,7 @@
       <div class="spacer"></div>
 
       <div class="account">
+        <button id="notice-btn" class="btn btn-ghost" title="公告与版本记录">v—</button>
         <span id="save-state" class="pill pill-muted">—</span>
         <span id="roster-count" class="pill pill-muted">角色池 —</span>
         <button id="roster-refresh" class="btn btn-ghost">刷新角色池</button>
@@ -128,6 +129,17 @@
           <button id="share-close" class="btn btn-ghost">关闭</button>
           <button id="share-copy" class="btn btn-primary">截图并复制</button>
         </div>
+      </div>
+    </div>
+
+    <div id="notice-overlay" class="modal hidden">
+      <div class="modal-box">
+        <div class="modal-head">
+          <h3>公告与版本</h3>
+          <div class="spacer"></div>
+          <button id="notice-close" class="btn btn-ghost">关闭</button>
+        </div>
+        <div id="notice-body" class="modal-body notice-body"></div>
       </div>
     </div>
 

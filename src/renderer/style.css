@@ -940,6 +940,86 @@ select {
   display: none;
 }
 
+/* ------------------------------------------------- 公告与版本 */
+
+.notice-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.notice-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #10141f;
+}
+
+.notice-meta .link {
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+
+.notice-update {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(110, 231, 183, 0.45);
+  background: rgba(110, 231, 183, 0.08);
+  color: #d9fff2;
+}
+
+.notice-release {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 10px;
+}
+
+.notice-release-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.notice-tag {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.notice-date {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-left: auto;
+}
+
+.notice-notes {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #b9c0d0;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+/* 有新版本时点亮顶栏的版本按钮 */
+.btn.has-update {
+  border-color: rgba(110, 231, 183, 0.6);
+  color: var(--accent);
+}
+
 .text-danger {
   color: var(--danger);
 }
