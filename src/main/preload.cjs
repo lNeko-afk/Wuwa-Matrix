@@ -12,6 +12,9 @@ contextBridge.exposeInMainWorld('wuwa', {
   fetchIcons: () => ipcRenderer.invoke('kuro:icons'),
   captureShare: (payload) => ipcRenderer.invoke('share:capture', payload),
   revealPath: (filePath) => ipcRenderer.invoke('share:reveal', filePath),
+  exportPlan: (payload) => ipcRenderer.invoke('plan:export', payload),
+  listPlans: () => ipcRenderer.invoke('plan:list'),
+  openPlanDir: () => ipcRenderer.invoke('plan:openDir'),
   loadNotice: () => ipcRenderer.invoke('notice:load'),
   openExternal: (url) => ipcRenderer.invoke('notice:openExternal', url),
 });

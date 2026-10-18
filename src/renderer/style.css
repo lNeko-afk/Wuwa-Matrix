@@ -1120,3 +1120,122 @@ select {
 .stamina-editor-foot .hint {
   margin: 0;
 }
+
+/* ------------------------------------------------- 配队数据（导出 / 导入） */
+
+.import-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.import-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.import-group h4 {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.4px;
+}
+
+.import-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.import-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  background: #10141f;
+}
+
+.import-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.import-row-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-row-sub {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.import-row-sub.warn {
+  color: #e6a34a;
+}
+
+.import-row-file {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(110, 231, 183, 0.45);
+  border-radius: 9px;
+  background: rgba(110, 231, 183, 0.08);
+  color: #d9fff2;
+  font-size: 12.5px;
+}
+
+.import-confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.btn-sm {
+  padding: 4px 9px;
+  font-size: 11.5px;
+}
+
+.import-body code {
+  padding: 1px 5px;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  background: #1b2130;
+  font-size: 11.5px;
+}
+
+/* 体力不足: 红边仍是「冲突」，角色本身灰掉 = 这个位置得换人 */
+.slot.is-over .slot-avatar,
+.slot.is-over .slot-name {
+  filter: grayscale(1);
+  opacity: 0.5;
+}
+
+/* 导入来的人不在当前角色池 —— 名字来自快照，头像没有就是首字 */
+.slot.is-missing {
+  border-style: dashed;
+}
+
+.slot.is-missing .slot-avatar {
+  filter: grayscale(1);
+  opacity: 0.45;
+}

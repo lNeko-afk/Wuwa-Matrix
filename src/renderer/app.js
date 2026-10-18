@@ -47,6 +47,8 @@ const state = {
   iconMap: {},
   picker: null,
   saveTimer: null,
+  /** 导入的配队里可能有当前角色池没有的角色 —— 按快照记下的名字显示，别显示成 #id */
+  aliasNames: {},
 };
 
 /* ------------------------------------------------------------ 本期 / 方案 */
@@ -118,7 +120,8 @@ function normalizePlan() {
 /* ------------------------------------------------------------ 体力与定位 */
 
 const roleById = (roleId) => state.roster.find((r) => r.roleId === String(roleId)) || null;
-const nameOf = (roleId) => roleById(roleId)?.name || `#${roleId}`;
+const aliasNameOf = (roleId) => state.aliasNames[String(roleId)] || '';
+const nameOf = (roleId) => roleById(roleId)?.name || aliasNameOf(roleId) || `#${roleId}`;
 
 /**
  * 治疗位判定: 本期手动覆盖 > 内置名单(库街区 wiki 突破属性) > 漂泊者·气动特例。
@@ -340,14 +343,15 @@ function renderTeams() {
             return `<div class="slot" data-team="${esc(team.id)}" data-slot="${slotIndex}"><span class="slot-empty">+ 空位</span></div>`;
           }
           const role = roleById(roleId);
+          const alias = aliasNameOf(roleId);
           const cap = staminaOf(roleId);
           const used = usage[roleId] || 0;
           const over = used > cap;
           return `
-          <div class="slot is-filled ${over ? 'is-over' : ''}" data-team="${esc(team.id)}" data-slot="${slotIndex}">
-            <div class="slot-avatar" data-avatar="${esc(roleId)}">${esc((role?.name || '?').slice(0, 1))}</div>
-            <div class="slot-name" title="${esc(role?.name || roleId)}">${esc(role?.name || nameOf(roleId))}</div>
-            <div class="slot-tag">已用 ${used}/${cap}${over ? ' 超支' : ''}</div>
+          <div class="slot is-filled ${over ? 'is-over' : ''} ${role ? '' : 'is-missing'}" data-team="${esc(team.id)}" data-slot="${slotIndex}">
+            <div class="slot-avatar" data-avatar="${esc(roleId)}">${esc((role?.name || alias || '?').slice(0, 1))}</div>
+            <div class="slot-name" title="${esc(role?.name || alias || roleId)}">${esc(role?.name || alias || nameOf(roleId))}</div>
+            <div class="slot-tag">${role ? `已用 ${used}/${cap}${over ? ' 超支' : ''}` : '不在角色池'}</div>
           </div>`;
         })
         .join('');
@@ -739,42 +743,13 @@ function bindEvents() {
     renderAll();
   });
 
-  $('#inherit-btn').addEventListener('click', () => {
-    const period = activePeriod();
-    const index = periods().findIndex((p) => p.id === period.id);
-    const prev = periods()[index - 1];
-    if (!prev) {
-      toast('没有上一期可以继承', true);
-      return;
-    }
-    const prevPlan = state.config.plans[prev.id];
-    if (!prevPlan?.teams?.length) {
-      toast(`「${prev.name}」还没有保存过配队`, true);
-      return;
-    }
-    const plan = activePlan();
-    if (plan.teams.length && !confirm(`将用「${prev.name}」的配队覆盖本期现有 ${plan.teams.length} 支队伍，继续？`)) return;
-    plan.teams = prevPlan.teams.map((t, i) => ({
-      id: uid('t'),
-      name: `第 ${i + 1} 队`,
-      slots: [...t.slots],
-      note: t.note || '',
-    }));
-    state.activeTeamId = plan.teams[0]?.id || null;
-    touch();
-    renderAll();
-    const over = countOverRoles();
-    toast(
-      over
-        ? `已继承 ${prevPlan.teams.length} 支队伍 —— 有 ${over} 个角色体力不足，已标红`
-        : `已继承 ${prevPlan.teams.length} 支队伍，体力都够`,
-    );
-  });
+  // 「导入配队」统一入口：上一期（本机记录）和导出过的配队数据在同一个窗口里
+  $('#import-btn').addEventListener('click', () => openImport());
 
   $('#period-add').addEventListener('click', () => {
     const current = activePeriod();
     const period = newPeriod(`第 ${periods().length + 1} 期`);
-    // 体力与定位覆盖沿用本期; 配队不沿用(用「继承上期配队」按需拉取)
+    // 体力与定位覆盖沿用本期; 配队不沿用(用「导入配队」按需拉取)
     if (current) {
       period.stamina = { ...current.stamina };
       period.healerOverride = { ...current.healerOverride };
@@ -1111,6 +1086,315 @@ $('#share-reveal').addEventListener('click', () => {
 $('#share-close').addEventListener('click', () => $('#share-overlay').classList.add('hidden'));
 $('#share-overlay').addEventListener('click', (event) => {
   if (event.target.id === 'share-overlay') $('#share-overlay').classList.add('hidden');
+});
+
+/* ------------------------------------------------------- 配队数据（导出 / 导入） */
+
+const PLAN_FORMAT = 'wuwa-matrix/plan';
+
+/** 当前期用到的角色 id —— 只导用得到的，不把整个角色池写进文件。 */
+function usedRoleIds() {
+  const ids = new Set();
+  for (const team of activePlan()?.teams || []) for (const id of team.slots) if (id) ids.add(id);
+  return [...ids];
+}
+
+/** 一份自包含的快照：期名 + 队伍站位 + 该期的体力/治疗判定 + 用到的角色名。 */
+function buildPlanSnapshot() {
+  const period = activePeriod();
+  const plan = activePlan();
+  return {
+    format: PLAN_FORMAT,
+    formatVersion: 1,
+    app: 'wuwa-matrix',
+    period: {
+      name: period?.name || '本期',
+      stamina: { ...(period?.stamina || {}) },
+      healerOverride: { ...(period?.healerOverride || {}) },
+    },
+    teams: (plan?.teams || []).map((t) => ({ name: t.name, slots: [...t.slots], note: t.note || '' })),
+    roles: usedRoleIds().map((roleId) => {
+      const role = roleById(roleId);
+      return {
+        roleId,
+        name: role?.name || aliasNameOf(roleId) || '',
+        attribute: role?.attribute || '',
+        weapon: role?.weapon || '',
+      };
+    }),
+  };
+}
+
+async function exportPlanData() {
+  if (!bridge) {
+    toast('预览模式下不能导出配队数据', true);
+    return;
+  }
+  const snapshot = buildPlanSnapshot();
+  if (!snapshot.teams.length) {
+    toast('还没有队伍可以导出', true);
+    return;
+  }
+  try {
+    const result = await bridge.exportPlan({ name: `配队-${snapshot.period.name}`, data: snapshot });
+    shareLastFile = result.path;
+    setShareStatus(result.path);
+    toast(`已导出 ${snapshot.teams.length} 队配队数据（含体力设置），点「打开文件夹」可取出`);
+  } catch (err) {
+    toast(`导出失败：${err.message}`, true);
+  }
+}
+
+/* ---- 导入：本机上一期 + 导出过的配队数据，同一个窗口 ---- */
+
+const importView = { items: [], dir: '', skipped: 0, error: '', pending: null, prev: null };
+
+/** 上一期按时间段判断 —— 和原来「继承上期配队」同一个口径。 */
+function previousPeriod() {
+  const period = activePeriod();
+  const index = periods().findIndex((p) => p.id === period?.id);
+  const prev = index > 0 ? periods()[index - 1] : null;
+  return prev ? { period: prev, plan: state.config.plans[prev.id] || null } : null;
+}
+
+/** 快照里有多少角色不在当前角色池。没登录时不判断，免得满屏都是「缺失」。 */
+function missingCountOf(teams) {
+  if (!state.roster.length) return 0;
+  const owned = new Set(state.roster.map((r) => r.roleId));
+  const ids = new Set();
+  for (const team of teams) for (const id of team.slots || []) if (id && !owned.has(id)) ids.add(id);
+  return ids.size;
+}
+
+async function openImport() {
+  $('#import-overlay').classList.remove('hidden');
+  await loadImportList();
+}
+
+async function loadImportList() {
+  importView.prev = previousPeriod();
+  importView.pending = null;
+  if (!bridge) {
+    Object.assign(importView, { items: [], dir: '', skipped: 0, error: '预览模式读不到本地配队数据' });
+    renderImport();
+    return;
+  }
+  $('#import-body').innerHTML = '<p class="hint">正在读取…</p>';
+  try {
+    const list = await bridge.listPlans();
+    Object.assign(importView, {
+      items: list.items || [],
+      dir: list.dir || '',
+      skipped: list.skipped || 0,
+      error: '',
+    });
+  } catch (err) {
+    Object.assign(importView, { items: [], skipped: 0, error: err.message });
+  }
+  renderImport();
+}
+
+function importRowHtml(item) {
+  const missing = missingCountOf(item.teams);
+  const when = item.exportedAt ? new Date(item.exportedAt).toLocaleString('zh-CN', { hour12: false }) : '';
+  const bits = [`${item.teamCount} 支队伍`, `${item.slotCount} 人次`, when].filter(Boolean);
+  if (missing) bits.push(`${missing} 个角色不在你的角色池`);
+  return `
+    <div class="import-row">
+      <div class="import-row-main">
+        <div class="import-row-title">${esc(item.periodName || item.file)}</div>
+        <div class="import-row-sub ${missing ? 'warn' : ''}">${esc(bits.join(' · '))}</div>
+        <div class="import-row-file" title="${esc(item.path)}">${esc(item.file)}</div>
+      </div>
+      <button class="btn" data-import-file="${esc(item.file)}">导入</button>
+    </div>`;
+}
+
+function renderImport() {
+  const body = $('#import-body');
+  if (!body) return;
+  const { prev, items, skipped, error, pending } = importView;
+  const parts = [];
+
+  // 点了「导入」之后先问落到哪：新建一期 / 覆盖当前期
+  if (pending) {
+    const carries = pending.stamina ? '含体力设置' : '体力沿用当前期';
+    parts.push(`
+      <div class="import-confirm">
+        <div class="import-confirm-main">
+          <span>将导入 <b>${esc(pending.label)}</b>：${pending.teams.length} 支队伍 · ${carries}。落到：</span>
+        </div>
+        <div class="import-confirm-actions">
+          <button class="btn btn-ghost" data-import-cancel="1">取消</button>
+          <button class="btn" data-import-mode="overwrite">覆盖当前期</button>
+          <button class="btn btn-primary" data-import-mode="new">新建一期</button>
+        </div>
+      </div>`);
+  }
+
+  parts.push('<div class="import-group"><h4>本机上一期</h4>');
+  if (!prev) {
+    parts.push('<p class="hint">这是第一期，没有上一期可导入。</p>');
+  } else if (!prev.plan?.teams?.length) {
+    parts.push(`<p class="hint">「${esc(prev.period.name)}」还没有保存过配队。</p>`);
+  } else {
+    parts.push(`
+      <div class="import-row">
+        <div class="import-row-main">
+          <div class="import-row-title">${esc(prev.period.name)}</div>
+          <div class="import-row-sub">${prev.plan.teams.length} 支队伍 · 体力沿用当前期</div>
+        </div>
+        <button class="btn" data-import-prev="1">导入</button>
+      </div>`);
+  }
+  parts.push('</div>');
+
+  parts.push(`
+    <div class="import-group">
+      <div class="import-group-head">
+        <h4>导出过的配队数据</h4>
+        <div class="spacer"></div>
+        <button class="btn btn-ghost btn-sm" data-import-refresh="1">重新扫描</button>
+        <button class="btn btn-ghost btn-sm" data-import-opendir="1">打开文件夹</button>
+      </div>`);
+  if (error) parts.push(`<p class="hint warn">读取失败：${esc(error)}</p>`);
+  if (!items.length) {
+    parts.push(`<p class="empty-note">还没有导出过配队数据。在「分享图」窗口里点 <b>保存配队数据</b>，就会出现在这里。</p>
+      <p class="hint">别人给你的 <code>.json</code> 也可以丢进这个文件夹，再点「重新扫描」。</p>`);
+  } else {
+    parts.push(items.map(importRowHtml).join(''));
+  }
+  if (skipped) parts.push(`<p class="hint">有 ${skipped} 个 .json 不是配队数据，已跳过。</p>`);
+  parts.push('</div>');
+
+  body.innerHTML = parts.join('');
+}
+
+function askImport(payload) {
+  importView.pending = payload;
+  renderImport();
+  $('#import-body').scrollTop = 0;
+}
+
+/** 新建期时避免重名：导入「第 3 期」而本机已有同名期，就变成「第 3 期（导入）」。 */
+function uniquePeriodName(base) {
+  const wanted = String(base || '').trim() || `第 ${periods().length + 1} 期`;
+  const taken = new Set(periods().map((p) => p.name));
+  if (!taken.has(wanted)) return wanted;
+  let name = `${wanted}（导入）`;
+  let n = 2;
+  while (taken.has(name)) name = `${wanted}（导入${n++}）`;
+  return name;
+}
+
+/**
+ * 真正落地。导入一律不因为体力不足而失败 —— 体力不够的角色在队伍里灰显，
+ * 让人自己换掉，而不是把整份数据挡在门外。
+ */
+function doImport(mode) {
+  const pending = importView.pending;
+  if (!pending) return;
+  const teams = pending.teams
+    .filter((t) => Array.isArray(t.slots) && t.slots.some(Boolean))
+    .map((t, i) => ({
+      id: uid('t'),
+      name: String(t.name || '').trim() || `第 ${i + 1} 队`,
+      slots: [...t.slots],
+      note: t.note || '',
+    }));
+  if (!teams.length) {
+    toast('这份数据里没有有效的队伍', true);
+    return;
+  }
+
+  let period;
+  let created = false;
+  if (mode === 'new') {
+    period = newPeriod(uniquePeriodName(pending.periodName));
+    periods().push(period);
+    state.config.settings.activePeriodId = period.id;
+    created = true;
+  } else {
+    period = activePeriod();
+  }
+  if (pending.stamina) period.stamina = { ...pending.stamina };
+  if (pending.healerOverride) period.healerOverride = { ...pending.healerOverride };
+  if (pending.alias) Object.assign(state.aliasNames, pending.alias);
+
+  const plan = planFor(period.id);
+  plan.teams = teams;
+  plan.updatedAt = Date.now();
+  state.activeTeamId = teams[0]?.id || null;
+  importView.pending = null;
+
+  touch();
+  renderAll();
+  $('#import-overlay').classList.add('hidden');
+
+  const over = countOverRoles();
+  const missing = missingCountOf(teams);
+  const bits = [`已导入 ${teams.length} 支队伍`, created ? `新建了「${period.name}」` : '覆盖了当前期'];
+  if (pending.stamina) bits.push('体力按导出时还原');
+  if (missing) bits.push(`${missing} 个角色不在你的角色池`);
+  if (over) bits.push(`${over} 个角色体力不足，已灰显，换掉即可`);
+  toast(bits.join('；'), Boolean(missing || over));
+}
+
+$('#share-plan').addEventListener('click', exportPlanData);
+$('#import-close').addEventListener('click', () => $('#import-overlay').classList.add('hidden'));
+$('#import-overlay').addEventListener('click', (event) => {
+  if (event.target.id === 'import-overlay') $('#import-overlay').classList.add('hidden');
+});
+$('#import-body').addEventListener('click', (event) => {
+  const target = event.target.closest('button');
+  if (!target) return;
+
+  if (target.dataset.importPrev) {
+    const prev = importView.prev;
+    if (!prev?.plan?.teams?.length) return;
+    askImport({
+      label: `「${prev.period.name}」的配队`,
+      periodName: prev.period.name,
+      teams: prev.plan.teams.map((t) => ({ name: t.name, slots: [...t.slots], note: t.note || '' })),
+      stamina: null,
+      healerOverride: null,
+      alias: null,
+    });
+    return;
+  }
+  if (target.dataset.importFile) {
+    const item = importView.items.find((i) => i.file === target.dataset.importFile);
+    if (!item) return;
+    askImport({
+      label: `「${item.periodName || item.file}」的配队数据`,
+      periodName: item.periodName,
+      teams: item.teams,
+      stamina: item.stamina,
+      healerOverride: item.healerOverride,
+      alias: Object.fromEntries(
+        (item.roles || []).filter((r) => r.roleId && r.name).map((r) => [r.roleId, r.name]),
+      ),
+    });
+    return;
+  }
+  if (target.dataset.importMode) {
+    doImport(target.dataset.importMode);
+    return;
+  }
+  if (target.dataset.importCancel) {
+    importView.pending = null;
+    renderImport();
+    return;
+  }
+  if (target.dataset.importRefresh) {
+    loadImportList();
+    return;
+  }
+  if (target.dataset.importOpendir) {
+    bridge?.openPlanDir().then((result) => {
+      if (result && result !== 'ok') toast(`打不开文件夹：${result}`, true);
+    });
+  }
 });
 
 /* ------------------------------------------------------------ 公告与版本 */

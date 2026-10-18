@@ -58,8 +58,8 @@
           <h2>配队</h2>
           <div class="pane-head-actions">
             <span id="usage-summary" class="pill pill-muted"></span>
-            <button id="share-btn" class="btn btn-ghost">分享图</button>
-            <button id="inherit-btn" class="btn btn-ghost">继承上期配队</button>
+            <button id="share-btn" class="btn btn-ghost">导出 / 分享</button>
+            <button id="import-btn" class="btn btn-ghost">导入配队</button>
             <button id="team-add" class="btn btn-primary">+ 新增队伍</button>
           </div>
         </div>
@@ -125,10 +125,22 @@
         <div class="share-actions">
           <span id="share-status" class="hint"></span>
           <button id="share-reveal" class="btn btn-ghost" disabled>打开文件夹</button>
+          <button id="share-plan" class="btn btn-ghost">保存配队数据</button>
           <button id="share-save" class="btn">保存 PNG</button>
           <button id="share-close" class="btn btn-ghost">关闭</button>
           <button id="share-copy" class="btn btn-primary">截图并复制</button>
         </div>
+      </div>
+    </div>
+
+    <div id="import-overlay" class="modal hidden">
+      <div class="modal-box">
+        <div class="modal-head">
+          <h3>导入配队</h3>
+          <div class="spacer"></div>
+          <button id="import-close" class="btn btn-ghost">关闭</button>
+        </div>
+        <div id="import-body" class="modal-body import-body"></div>
       </div>
     </div>
 

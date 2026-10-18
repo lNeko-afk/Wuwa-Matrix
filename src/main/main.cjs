@@ -577,6 +577,133 @@ function registerIpc() {
     if (typeof filePath === 'string' && filePath) shell.showItemInFolder(filePath);
     return true;
   });
+
+  /* -------------------------------------------------- 配队数据（导出 / 导入） */
+
+  /**
+   * 配队数据和分享图落在同一个 exports/ 目录。
+   * 「导入配队」列的就是这个目录里的 .json —— 不做系统文件选择框：
+   * 想把方案给朋友，就把 json 拷出去；想让朋友给你的方案进来，就把 json 丢进这个目录。
+   */
+  const planDir = () => path.join(dataDir(), 'exports');
+  const PLAN_FORMAT = 'wuwa-matrix/plan';
+  const PLAN_MAX_BYTES = 2 * 1024 * 1024;
+  const TEAM_SLOTS = 3;
+  const clockStamp = () => {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  };
+
+  /**
+   * 读一份配队数据。只认形状，不信内容：
+   * 不是本项目的格式（没有 teams 数组）/ 超大 / 坏 JSON 一律返回 null，由调用方计为「跳过」。
+   * 文件可能来自别人的机器，所以每个字段都当作不可信输入来收窄。
+   */
+  function readPlanFile(full) {
+    const stat = fs.statSync(full);
+    if (!stat.isFile() || stat.size > PLAN_MAX_BYTES) return null;
+    const raw = JSON.parse(fs.readFileSync(full, 'utf8'));
+    if (!raw || typeof raw !== 'object' || !Array.isArray(raw.teams)) return null;
+    if (raw.format && raw.format !== PLAN_FORMAT) return null;
+
+    const period = raw.period && typeof raw.period === 'object' ? raw.period : {};
+    const clip = (v, n) => String(v ?? '').slice(0, n);
+    const mapOfNumbers = (obj) => {
+      if (!obj || typeof obj !== 'object') return {};
+      const out = {};
+      for (const [key, value] of Object.entries(obj)) {
+        const n = Number(value);
+        if (Number.isFinite(n)) out[String(key)] = n;
+      }
+      return out;
+    };
+    const mapOfBooleans = (obj) => {
+      if (!obj || typeof obj !== 'object') return {};
+      const out = {};
+      for (const [key, value] of Object.entries(obj)) out[String(key)] = Boolean(value);
+      return out;
+    };
+
+    return {
+      format: PLAN_FORMAT,
+      formatVersion: Number(raw.formatVersion) || 1,
+      exportedAt: Number(raw.exportedAt) || Math.round(stat.mtimeMs),
+      periodName: clip(period.name, 40),
+      stamina: mapOfNumbers(period.stamina),
+      healerOverride: mapOfBooleans(period.healerOverride),
+      teams: raw.teams.slice(0, 60).map((t) => ({
+        name: clip(t?.name, 40),
+        slots: (Array.isArray(t?.slots) ? t.slots : []).map((s) => (typeof s === 'string' && s ? s : null)).slice(0, TEAM_SLOTS),
+        note: clip(t?.note, 200),
+      })),
+      roles: (Array.isArray(raw.roles) ? raw.roles : []).slice(0, 200).map((r) => ({
+        roleId: clip(r?.roleId, 32),
+        name: clip(r?.name, 40),
+        attribute: clip(r?.attribute, 12),
+        weapon: clip(r?.weapon, 12),
+      })),
+    };
+  }
+
+  ipcMain.handle('plan:export', (_event, payload = {}) => {
+    const data = payload?.data;
+    if (!data || typeof data !== 'object' || !Array.isArray(data.teams) || !data.teams.length) {
+      throw new Error('没有可导出的配队');
+    }
+    const dir = planDir();
+    fs.mkdirSync(dir, { recursive: true });
+    // 文件名只去掉 Windows 不允许的字符；空格保留，读起来更像人写的名字
+    const safe =
+      String(payload.name || '配队')
+        .replace(/[\\/:*?"<>|]+/g, '_')
+        .replace(/[. ]+$/g, '')
+        .trim()
+        .slice(0, 60) || '配队';
+    const file = path.join(dir, `${safe}-${clockStamp()}.json`);
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ ...data, format: PLAN_FORMAT, formatVersion: 1, exportedAt: Date.now() }, null, 2),
+      'utf8',
+    );
+    return { path: file, size: fs.statSync(file).size, dir };
+  });
+
+  ipcMain.handle('plan:list', () => {
+    const dir = planDir();
+    const out = { dir, items: [], skipped: 0 };
+    if (!fs.existsSync(dir)) return out;
+    for (const name of fs.readdirSync(dir)) {
+      if (!/\.json$/i.test(name)) continue;
+      const full = path.join(dir, name);
+      try {
+        const plan = readPlanFile(full);
+        if (!plan) {
+          out.skipped += 1;
+          continue;
+        }
+        out.items.push({
+          ...plan,
+          file: name,
+          path: full,
+          mtime: Math.round(fs.statSync(full).mtimeMs),
+          teamCount: plan.teams.length,
+          slotCount: plan.teams.reduce((n, t) => n + t.slots.filter(Boolean).length, 0),
+        });
+      } catch {
+        out.skipped += 1;
+      }
+    }
+    // 新导出的排前面；同时间戳再按文件修改时间兜底
+    out.items.sort((a, b) => b.exportedAt - a.exportedAt || b.mtime - a.mtime);
+    return out;
+  });
+
+  ipcMain.handle('plan:openDir', async () => {
+    const dir = planDir();
+    fs.mkdirSync(dir, { recursive: true });
+    return (await shell.openPath(dir)) || 'ok';
+  });
 }
 
 app.whenReady().then(() => {
